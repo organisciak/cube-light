@@ -1,0 +1,22 @@
+node_modules
+dist
+.DS_Store
+*.log
+.env
+.env.local
+.vite
+tsconfig.tsbuildinfo
+.playwright-mcp/
+cube-light-poc.png
+
+# firmware build artifacts
+firmware/.pio/
+firmware/native/build/
+
+# beads: keep issues.jsonl + config tracked, ignore runtime state
+.beads/dolt/
+.beads/dolt-access.lock
+.beads/ephemeral.sqlite3
+.beads/last-touched
+.beads/interactions.jsonl
+.beads/hooks/

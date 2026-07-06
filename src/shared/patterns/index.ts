@@ -1,0 +1,43 @@
+import type { Pattern } from './types';
+import { wavySheet } from './wavySheet';
+import { solid } from './solid';
+import { indexWalk } from './indexWalk';
+import { litPixel } from './litPixel';
+import { plasma } from './plasma';
+import { rain } from './rain';
+import { rotatingPlanes } from './rotatingPlanes';
+import { audioRipple } from './audioRipple';
+import { spectrumDiscs } from './spectrumDiscs';
+import { cloud } from './cloud';
+import { dayCycle } from './dayCycle';
+import { comet } from './comet';
+import { text3d } from './text3d';
+import { fire } from './fire';
+import { life3d } from './life3d';
+import { snake3d } from './snake3d';
+import { pacman3d } from './pacman3d';
+import { fireworks } from './fireworks';
+
+export const patterns: Record<string, Pattern> = {
+  [wavySheet.meta.id]: wavySheet,
+  [plasma.meta.id]: plasma,
+  [rain.meta.id]: rain,
+  [rotatingPlanes.meta.id]: rotatingPlanes,
+  [audioRipple.meta.id]: audioRipple,
+  [spectrumDiscs.meta.id]: spectrumDiscs,
+  [cloud.meta.id]: cloud,
+  [dayCycle.meta.id]: dayCycle,
+  [comet.meta.id]: comet,
+  [text3d.meta.id]: text3d,
+  [fire.meta.id]: fire,
+  [life3d.meta.id]: life3d,
+  [snake3d.meta.id]: snake3d,
+  [pacman3d.meta.id]: pacman3d,
+  [fireworks.meta.id]: fireworks,
+  [solid.meta.id]: solid,
+  [indexWalk.meta.id]: indexWalk,
+  [litPixel.meta.id]: litPixel,
+};
+
+export const defaultPatternId = wavySheet.meta.id;
+export const calibrationPatternId = litPixel.meta.id;
