@@ -16,6 +16,10 @@ extern const Pattern kCloud;
 extern const Pattern kAudioRipple;
 extern const Pattern kSpectrumDiscs;
 extern const Pattern kDayCycle;
+extern const Pattern kLife3d;
+extern const Pattern kText3d;
+extern const Pattern kIndexWalk;
+extern const Pattern kLitPixel;
 
 const Pattern* const kPatterns[] = {
     &kWavySheet,
@@ -28,7 +32,11 @@ const Pattern* const kPatterns[] = {
     &kAudioRipple,
     &kSpectrumDiscs,
     &kDayCycle,
+    &kLife3d,
+    &kText3d,
     &kSolid,
+    &kIndexWalk,
+    &kLitPixel,
 };
 const int kPatternCount = sizeof(kPatterns) / sizeof(kPatterns[0]);
 const char* const kDefaultPatternId = "wavy-sheet";
