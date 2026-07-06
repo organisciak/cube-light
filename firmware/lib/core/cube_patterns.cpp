@@ -12,6 +12,10 @@ extern const Pattern kRotatingPlanes;
 extern const Pattern kRain;
 extern const Pattern kFire;
 extern const Pattern kComet;
+extern const Pattern kCloud;
+extern const Pattern kAudioRipple;
+extern const Pattern kSpectrumDiscs;
+extern const Pattern kDayCycle;
 
 const Pattern* const kPatterns[] = {
     &kWavySheet,
@@ -20,6 +24,10 @@ const Pattern* const kPatterns[] = {
     &kRain,
     &kFire,
     &kComet,
+    &kCloud,
+    &kAudioRipple,
+    &kSpectrumDiscs,
+    &kDayCycle,
     &kSolid,
 };
 const int kPatternCount = sizeof(kPatterns) / sizeof(kPatterns[0]);
