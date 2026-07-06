@@ -20,6 +20,8 @@ extern const Pattern kLife3d;
 extern const Pattern kText3d;
 extern const Pattern kIndexWalk;
 extern const Pattern kLitPixel;
+extern const Pattern kFireworks;
+extern const Pattern kSnake3d;
 
 const Pattern* const kPatterns[] = {
     &kWavySheet,
@@ -34,6 +36,8 @@ const Pattern* const kPatterns[] = {
     &kDayCycle,
     &kLife3d,
     &kText3d,
+    &kFireworks,
+    &kSnake3d,
     &kSolid,
     &kIndexWalk,
     &kLitPixel,
