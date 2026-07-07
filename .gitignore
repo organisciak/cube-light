@@ -20,3 +20,4 @@ firmware/native/build/
 .beads/last-touched
 .beads/interactions.jsonl
 .beads/hooks/
+.beads/embeddeddolt/
