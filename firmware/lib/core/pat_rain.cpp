@@ -1,5 +1,6 @@
-// Port of src/shared/patterns/rain.ts. Drop list becomes a fixed pool
-// (kMaxDrops exceeds the worst-case live count at max spawn rate).
+// Port of src/shared/patterns/rain.ts. Drop list becomes a fixed pool sized
+// for typical spawn rates (extreme audio-boosted rates drop extra spawns —
+// visually indistinguishable in a downpour). Kept modest for ESP32 DRAM.
 #include <cmath>
 #include <cstring>
 
@@ -18,7 +19,7 @@ struct Drop {
   float brightness;
 };
 
-constexpr int kMaxDrops = 512;
+constexpr int kMaxDrops = 320;
 Drop s_drops[kMaxDrops];
 int s_dropCount = 0;
 float s_lastT = 0;
