@@ -1,20 +1,28 @@
-// ESP32 firmware entry point (GL-C-618WL target).
+// ESP32 firmware entry point (Gledopto GL-C-618WL target).
 //
 // Status: skeleton, written ahead of hardware arrival — compiles under
-// PlatformIO but is UNTESTED on a real board. Verify CUBE_LED_PIN and the
-// color order against the stock WLED settings before first flash.
+// PlatformIO but is UNTESTED on a real board.
+//
+// BEFORE FIRST FLASH: open the stock WLED UI and record every pin mapping
+// its settings pages show (LED GPIO, color order, button pin, mic pins,
+// relay pin). Then set the CUBE_* build flags in platformio.ini to match.
 //
 // What it does:
-//  - Joins WiFi (or brings up AP "cube-light" if no credentials are built in)
+//  - Joins WiFi (or brings up AP "cube-light" if no credentials built in)
 //  - Runs the shared pattern core at CUBE_FPS into a frame buffer
-//  - Pushes frames to the LEDs via NeoPixelBus (RMT, hardware-timed)
+//  - Applies brightness + a WLED-style current limiter (CUBE_SUPPLY_MA /
+//    CUBE_PER_LED_MA), then pushes frames via NeoPixelBus (RMT)
+//  - Color order is runtime data (CUBE_COLOR_ORDER, e.g. "RGB"/"GRB"/"BRG")
+//    applied when copying into the strip, so no rebuild needed to fix it
 //  - Listens for WLED DNRGB packets on UDP 21324; live packets override the
 //    local pattern until their timeout lapses (same semantics as WLED), so
 //    the existing Node dev server keeps working unchanged
+//  - Function button (CUBE_BUTTON_PIN, active-low) short-press cycles to the
+//    next pattern
 //  - ArduinoOTA so re-flashing never needs the USB cable after the first time
 //
-// Not yet here (next steps): mic capture + FFT, WS/HTTP control API,
-// LittleFS persistence, brightness/orientation, snake input.
+// Not yet here (next steps): mic capture + FFT -> BeatDetector, WS/HTTP
+// control API, LittleFS persistence, /snake controller page.
 
 #include <Arduino.h>
 #include <ArduinoOTA.h>
@@ -23,6 +31,7 @@
 #include <WiFiUdp.h>
 
 #include "cube_pattern.h"
+#include "cube_power.h"
 
 #ifndef CUBE_LED_PIN
 #define CUBE_LED_PIN 16
@@ -30,15 +39,41 @@
 #ifndef CUBE_FPS
 #define CUBE_FPS 30
 #endif
+#ifndef CUBE_COLOR_ORDER
+#define CUBE_COLOR_ORDER "RGB"  // wire order; check stock WLED's LED settings
+#endif
+#ifndef CUBE_SUPPLY_MA
+#define CUBE_SUPPLY_MA 10000  // PSU budget in mA; 0 disables the limiter
+#endif
+#ifndef CUBE_PER_LED_MA
+#define CUBE_PER_LED_MA 15  // full-white draw of one LED (12V seed pixels ~15mA)
+#endif
+#ifndef CUBE_IDLE_MA_PER_LED
+#define CUBE_IDLE_MA_PER_LED 0.5f  // quiescent IC draw per LED
+#endif
+#ifndef CUBE_BUTTON_PIN
+#define CUBE_BUTTON_PIN 0  // Gledopto function button is usually BOOT/GPIO0; -1 disables
+#endif
+#ifndef CUBE_BRIGHTNESS
+#define CUBE_BRIGHTNESS 1.0f  // global master brightness 0..1
+#endif
 
 using namespace cube;
 
-// WS2811 12V strings: color order varies by batch — stock WLED's LED settings
-// page shows the right one for this cube. NeoRgbFeature/NeoGrbFeature/NeoBrgFeature.
-using ColorFeature = NeoRgbFeature;
+// The NeoPixelBus feature is fixed at RGB; the configured color order is a
+// runtime permutation applied while copying the frame into the strip. That
+// keeps "it's actually GRB" a one-flag (eventually one-setting) fix.
 using Method = NeoEsp32Rmt0Ws2811Method;
+NeoPixelBus<NeoRgbFeature, Method> strip(NUM_LEDS, CUBE_LED_PIN);
 
-NeoPixelBus<ColorFeature, Method> strip(NUM_LEDS, CUBE_LED_PIN);
+// perm[wireSlot] = source channel index (0=R 1=G 2=B of the pattern buffer).
+uint8_t colorPerm[3] = {0, 1, 2};
+
+void parseColorOrder(const char* order) {
+  for (int i = 0; i < 3 && order[i]; i++) {
+    colorPerm[i] = order[i] == 'G' ? 1 : order[i] == 'B' ? 2 : 0;
+  }
+}
 
 WiFiUDP udp;
 constexpr uint16_t kRealtimePort = 21324;
@@ -53,19 +88,21 @@ Geometry geo;
 Params params;
 AudioFrame audio;  // zeros until the mic stage lands
 const Pattern* activePattern = nullptr;
+int activePatternIdx = 0;
 PatternCtx ctx{frame, &geo, 0, 0, &audio, &params};
 uint32_t patternStartMs = 0;
 float lastT = 0;
 
-void setPattern(const char* id) {
-  const Pattern* p = findPattern(id);
-  if (!p) p = findPattern(kDefaultPatternId);
-  activePattern = p;
+void setPatternByIndex(int i) {
+  activePatternIdx = ((i % kPatternCount) + kPatternCount) % kPatternCount;
+  activePattern = kPatterns[activePatternIdx];
   patternStartMs = millis();
   lastT = 0;
   ctx.t = 0;
   ctx.dt = 0;
-  if (p->init) p->init(ctx);
+  params.clear();
+  if (activePattern->init) activePattern->init(ctx);
+  Serial.printf("[pattern] %s\n", activePattern->id);
 }
 
 void handleRealtime() {
@@ -84,15 +121,43 @@ void handleRealtime() {
   }
 }
 
+// Short-press on the function button cycles patterns. Active-low with the
+// internal pullup; 50ms debounce.
+void handleButton() {
+#if CUBE_BUTTON_PIN >= 0
+  static uint32_t lastEdgeMs = 0;
+  static bool lastState = true;
+  const bool state = digitalRead(CUBE_BUTTON_PIN);
+  const uint32_t now = millis();
+  if (state != lastState && now - lastEdgeMs > 50) {
+    lastEdgeMs = now;
+    lastState = state;
+    if (!state) setPatternByIndex(activePatternIdx + 1);  // falling edge = press
+  }
+#endif
+}
+
 void show(const uint8_t* rgb) {
+  // Brightness + current limit apply at output time only — the pattern
+  // buffer stays untouched so previews/telemetry would see full values.
+  const float limit = currentLimitScale(rgb, NUM_LEDS, CUBE_PER_LED_MA,
+                                        CUBE_IDLE_MA_PER_LED, CUBE_SUPPLY_MA);
+  const float k = limit * CUBE_BRIGHTNESS;
   for (int i = 0; i < NUM_LEDS; i++) {
-    strip.SetPixelColor(i, RgbColor(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]));
+    const uint8_t* px = rgb + i * 3;
+    strip.SetPixelColor(i, RgbColor((uint8_t)(px[colorPerm[0]] * k),
+                                    (uint8_t)(px[colorPerm[1]] * k),
+                                    (uint8_t)(px[colorPerm[2]] * k)));
   }
   strip.Show();
 }
 
 void setup() {
   Serial.begin(115200);
+  parseColorOrder(CUBE_COLOR_ORDER);
+#if CUBE_BUTTON_PIN >= 0
+  pinMode(CUBE_BUTTON_PIN, INPUT_PULLUP);
+#endif
   strip.Begin();
   strip.Show();  // all off
 
@@ -118,12 +183,13 @@ void setup() {
   ArduinoOTA.begin();
   udp.begin(kRealtimePort);
 
-  setPattern(kDefaultPatternId);
+  setPatternByIndex(0);
 }
 
 void loop() {
   ArduinoOTA.handle();
   handleRealtime();
+  handleButton();
 
   static uint32_t nextFrameMs = 0;
   const uint32_t now = millis();
