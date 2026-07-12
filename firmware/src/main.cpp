@@ -44,6 +44,19 @@
 #ifndef CUBE_LED_PIN
 #define CUBE_LED_PIN 16
 #endif
+// Second output: the cube's 1000-LED chain is cut at the wire midpoint and
+// fed as two 500-LED runs (halves transmit time -> 60fps ceiling, halves
+// data-error propagation, and pairs with power injection at both feed
+// points). The second half must be fed at its ORIGINAL START (where LED
+// CUBE_LED_SPLIT used to take data), keeping wire direction unchanged, so
+// the geometry mapping stays valid. Set CUBE_LED_PIN2=-1 for one unbroken
+// 1000-LED chain on CUBE_LED_PIN.
+#ifndef CUBE_LED_PIN2
+#define CUBE_LED_PIN2 12
+#endif
+#ifndef CUBE_LED_SPLIT
+#define CUBE_LED_SPLIT 500  // LEDs on output 1; the rest go to output 2
+#endif
 #ifndef CUBE_FPS
 #define CUBE_FPS 30
 #endif
@@ -120,9 +133,15 @@ void saveSetting(const char* key, uint32_t v) {
 // ---- LED output ---------------------------------------------------------------
 
 // Feature fixed at RGB; configured color order is a runtime permutation
-// applied while copying into the strip.
-using Method = NeoEsp32Rmt0Ws2811Method;
-NeoPixelBus<NeoRgbFeature, Method> strip(NUM_LEDS, CUBE_LED_PIN);
+// applied while copying into the strip. Two buses on separate RMT channels
+// transmit concurrently.
+#if CUBE_LED_PIN2 >= 0
+NeoPixelBus<NeoRgbFeature, NeoEsp32Rmt0Ws2811Method> strip(CUBE_LED_SPLIT, CUBE_LED_PIN);
+NeoPixelBus<NeoRgbFeature, NeoEsp32Rmt1Ws2811Method> strip2(NUM_LEDS - CUBE_LED_SPLIT,
+                                                            CUBE_LED_PIN2);
+#else
+NeoPixelBus<NeoRgbFeature, NeoEsp32Rmt0Ws2811Method> strip(NUM_LEDS, CUBE_LED_PIN);
+#endif
 
 uint8_t colorPerm[3] = {0, 1, 2};  // perm[wireSlot] = source channel (0=R 1=G 2=B)
 
@@ -138,11 +157,19 @@ void show(const uint8_t* rgb) {
   const float k = limit * settings.brightness;
   for (int i = 0; i < NUM_LEDS; i++) {
     const uint8_t* px = rgb + i * 3;
-    strip.SetPixelColor(i, RgbColor((uint8_t)(px[colorPerm[0]] * k),
-                                    (uint8_t)(px[colorPerm[1]] * k),
-                                    (uint8_t)(px[colorPerm[2]] * k)));
+    const RgbColor c((uint8_t)(px[colorPerm[0]] * k), (uint8_t)(px[colorPerm[1]] * k),
+                     (uint8_t)(px[colorPerm[2]] * k));
+#if CUBE_LED_PIN2 >= 0
+    if (i < CUBE_LED_SPLIT) strip.SetPixelColor(i, c);
+    else strip2.SetPixelColor(i - CUBE_LED_SPLIT, c);
+#else
+    strip.SetPixelColor(i, c);
+#endif
   }
   strip.Show();
+#if CUBE_LED_PIN2 >= 0
+  strip2.Show();
+#endif
 }
 
 // ---- pattern engine -----------------------------------------------------------
@@ -302,6 +329,10 @@ void setup() {
 #endif
   strip.Begin();
   strip.Show();  // all off
+#if CUBE_LED_PIN2 >= 0
+  strip2.Begin();
+  strip2.Show();
+#endif
 
   bool joined = false;
   if (settings.wifiSsid.length() > 0) {
