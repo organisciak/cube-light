@@ -60,7 +60,13 @@
 #define CUBE_IDLE_MA_PER_LED 0.5f
 #endif
 #ifndef CUBE_BUTTON_PIN
-#define CUBE_BUTTON_PIN 0  // Gledopto function button is usually BOOT/GPIO0; -1 disables
+#define CUBE_BUTTON_PIN 17  // 618WL function button (from stock WLED cfg); -1 disables
+#endif
+#ifndef CUBE_RELAY_PIN
+// The 618WL has an energy-saving relay that cuts LED V+ when "off". Stock
+// WLED drives it on GPIO18 (active high). If we don't raise it, the string
+// stays dark no matter what we clock out. -1 disables.
+#define CUBE_RELAY_PIN 18
 #endif
 #ifndef CUBE_AP_PASS
 #define CUBE_AP_PASS "cubelight"  // default AP+OTA password; change via /wifi
@@ -289,6 +295,10 @@ void setup() {
   applyColorOrder(settings.colorOrder);
 #if CUBE_BUTTON_PIN >= 0
   pinMode(CUBE_BUTTON_PIN, INPUT_PULLUP);
+#endif
+#if CUBE_RELAY_PIN >= 0
+  pinMode(CUBE_RELAY_PIN, OUTPUT);
+  digitalWrite(CUBE_RELAY_PIN, HIGH);  // power the LED string
 #endif
   strip.Begin();
   strip.Show();  // all off
