@@ -94,6 +94,7 @@ struct Settings {
   String wifiSsid;
   String wifiPass;
   String apPass;      // WPA2 AP password, doubles as the OTA password
+  String uiPass;      // optional HTTP auth for the settings console ("" = off)
   String patternId;
   String colorOrder;  // "RGB", "GRB", ...
   float brightness;   // 0..1
@@ -108,6 +109,7 @@ void loadSettings() {
   settings.wifiSsid = prefs.getString("ssid", "");
   settings.wifiPass = prefs.getString("pass", "");
   settings.apPass = prefs.getString("appass", CUBE_AP_PASS);
+  settings.uiPass = prefs.getString("uipass", "");
   settings.patternId = prefs.getString("pattern", kDefaultPatternId);
   settings.colorOrder = prefs.getString("order", CUBE_COLOR_ORDER);
   settings.brightness = prefs.getFloat("bright", 1.0f);
@@ -249,9 +251,128 @@ void handleButton() {
 #endif
 }
 
+// ---- WiFi supervisor ------------------------------------------------------------
+//
+// Boot-time-only fallback proved too fragile (a mistyped password left the
+// cube dark until a power cycle landed just right). This state machine
+// guarantees reachability at all times:
+//  - configured SSID -> try to join for 20s -> fall back to the AP on failure
+//  - joined but the connection drops for >10s -> AP comes back up
+//  - while in AP fallback with an SSID configured -> retry the STA join every
+//    2 minutes (in AP_STA, so the hotspot stays up during retries)
+//  - a successful late join drops the AP and goes clean STA
+
+enum class NetState { StaConnecting, StaOnline, ApFallback };
+NetState netState = NetState::ApFallback;
+uint32_t netStampMs = 0;
+uint32_t lastStaRetryMs = 0;
+uint32_t staLostMs = 0;
+
+// Credential test (from the /wifi page): trial join in AP_STA so the page
+// stays reachable. Result is polled via GET /api/wifitest.
+bool wifiTestActive = false;
+uint32_t wifiTestStartMs = 0;
+String wifiTestResult = "idle";  // idle | testing | ok | fail
+String wifiTestIp = "";
+
+void startAp() {
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP("cube-light", settings.apPass.c_str());
+  netState = NetState::ApFallback;
+  netStampMs = millis();
+  lastStaRetryMs = millis();
+  Serial.printf("[net] ap up, ip=%s\n", WiFi.softAPIP().toString().c_str());
+}
+
+void netBegin() {
+  if (settings.wifiSsid.length() > 0) {
+    WiFi.mode(WIFI_STA);
+    WiFi.setHostname("cube");
+    WiFi.begin(settings.wifiSsid.c_str(), settings.wifiPass.c_str());
+    netState = NetState::StaConnecting;
+    netStampMs = millis();
+    Serial.printf("[net] joining %s...\n", settings.wifiSsid.c_str());
+  } else {
+    startAp();
+  }
+}
+
+void netTick() {
+  if (wifiTestActive) {  // supervisor paused during a credential test
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiTestResult = "ok";
+      wifiTestIp = WiFi.localIP().toString();
+      wifiTestActive = false;
+      Serial.printf("[net] test ok, ip=%s\n", wifiTestIp.c_str());
+    } else if (millis() - wifiTestStartMs > 15000 ||
+               WiFi.status() == WL_CONNECT_FAILED) {
+      wifiTestResult = "fail";
+      wifiTestActive = false;
+      WiFi.disconnect(false);
+      Serial.println("[net] test failed");
+    }
+    return;
+  }
+
+  const uint32_t now = millis();
+  switch (netState) {
+    case NetState::StaConnecting:
+      if (WiFi.status() == WL_CONNECTED) {
+        netState = NetState::StaOnline;
+        staLostMs = 0;
+        Serial.printf("[net] sta ip=%s\n", WiFi.localIP().toString().c_str());
+      } else if (now - netStampMs > 20000) {
+        Serial.println("[net] join timed out; falling back to AP");
+        startAp();
+      }
+      break;
+    case NetState::StaOnline:
+      if (WiFi.status() == WL_CONNECTED) {
+        staLostMs = 0;
+      } else if (staLostMs == 0) {
+        staLostMs = now;
+      } else if (now - staLostMs > 10000) {
+        Serial.println("[net] sta lost; AP fallback (will keep retrying)");
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.softAP("cube-light", settings.apPass.c_str());
+        WiFi.begin(settings.wifiSsid.c_str(), settings.wifiPass.c_str());
+        netState = NetState::ApFallback;
+        lastStaRetryMs = now;
+      }
+      break;
+    case NetState::ApFallback:
+      if (settings.wifiSsid.length() > 0) {
+        if (WiFi.status() == WL_CONNECTED) {
+          Serial.printf("[net] late join ok, ip=%s; dropping AP\n",
+                        WiFi.localIP().toString().c_str());
+          WiFi.softAPdisconnect(true);
+          WiFi.mode(WIFI_STA);
+          netState = NetState::StaOnline;
+          staLostMs = 0;
+        } else if (now - lastStaRetryMs > 120000) {
+          lastStaRetryMs = now;
+          Serial.println("[net] retrying sta join (AP stays up)");
+          WiFi.mode(WIFI_AP_STA);
+          WiFi.begin(settings.wifiSsid.c_str(), settings.wifiPass.c_str());
+        }
+      }
+      break;
+  }
+}
+
 // ---- web UI -------------------------------------------------------------------
 
 WebServer server(80);
+
+// Optional console password (HTTP Basic auth, username "cube"). Applied to
+// everything the server exposes — view pages included, since the pattern
+// controls are on them.
+bool authed() {
+  if (settings.uiPass.length() == 0) return true;
+  if (server.authenticate("cube", settings.uiPass.c_str())) return true;
+  server.requestAuthentication();
+  return false;
+}
 
 void handleStatus() {
   String json = "{\"pattern\":\"" + settings.patternId + "\",\"patterns\":[";
@@ -275,40 +396,100 @@ void handleStatus() {
 }
 
 void setupWebServer() {
-  server.on("/", HTTP_GET, []() { server.send(200, "text/html", kIndexHtml); });
-  server.on("/api/status", HTTP_GET, handleStatus);
+  server.on("/", HTTP_GET, []() {
+    if (!authed()) return;
+    server.send(200, "text/html", kIndexHtml);
+  });
+  server.on("/api/status", HTTP_GET, []() {
+    if (!authed()) return;
+    handleStatus();
+  });
   server.on("/api/pattern", HTTP_POST, []() {
+    if (!authed()) return;
     setPatternById(server.arg("id"));
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/brightness", HTTP_POST, []() {
+    if (!authed()) return;
     settings.brightness = constrain(server.arg("v").toFloat(), 0.0f, 1.0f);
     saveSetting("bright", settings.brightness);
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/supply", HTTP_POST, []() {
+    if (!authed()) return;
     settings.supplyMA = (uint32_t)server.arg("ma").toInt();
     saveSetting("supply", settings.supplyMA);
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/order", HTTP_POST, []() {
+    if (!authed()) return;
     settings.colorOrder = server.arg("v");
     applyColorOrder(settings.colorOrder);
     saveSetting("order", settings.colorOrder);
     server.send(200, "text/plain", "ok");
   });
+  server.on("/api/scan", HTTP_GET, []() {
+    if (!authed()) return;
+    // Synchronous scan (~2s; patterns pause one beat — fine on a settings
+    // page). Needs the STA interface alongside a running AP.
+    if (WiFi.getMode() == WIFI_AP) WiFi.mode(WIFI_AP_STA);
+    const int n = WiFi.scanNetworks();
+    String json = "[";
+    int emitted = 0;
+    for (int i = 0; i < n && emitted < 15; i++) {
+      const String ssid = WiFi.SSID(i);
+      if (ssid.length() == 0) continue;
+      bool dup = false;  // keep the strongest instance of each SSID
+      for (int j = 0; j < i; j++) {
+        if (WiFi.SSID(j) == ssid) { dup = true; break; }
+      }
+      if (dup) continue;
+      if (emitted) json += ',';
+      String esc = ssid;
+      esc.replace("\\", "\\\\");
+      esc.replace("\"", "\\\"");
+      json += "{\"ssid\":\"" + esc + "\",\"rssi\":" + String(WiFi.RSSI(i)) +
+              ",\"open\":" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "true" : "false") + "}";
+      emitted++;
+    }
+    json += "]";
+    WiFi.scanDelete();
+    server.send(200, "application/json", json);
+  });
+  server.on("/api/wifitest", HTTP_POST, []() {
+    if (!authed()) return;
+    // Trial join in AP_STA so the hotspot (and this page) survive the test.
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(server.arg("ssid").c_str(), server.arg("pass").c_str());
+    wifiTestActive = true;
+    wifiTestStartMs = millis();
+    wifiTestResult = "testing";
+    wifiTestIp = "";
+    server.send(200, "text/plain", "started");
+  });
+  server.on("/api/wifitest", HTTP_GET, []() {
+    if (!authed()) return;
+    server.send(200, "application/json",
+                "{\"state\":\"" + wifiTestResult + "\",\"ip\":\"" + wifiTestIp + "\"}");
+  });
   server.on("/wifi", HTTP_GET, []() {
+    if (!authed()) return;
     String page = kWifiHtml;
     page.replace("%SSID%", settings.wifiSsid);
+    page.replace("%UIPASS%", settings.uiPass.length() ? "(unchanged)" : "(not set)");
     server.send(200, "text/html", page);
   });
   server.on("/wifi", HTTP_POST, []() {
+    if (!authed()) return;
     if (server.hasArg("ssid")) saveSetting("ssid", server.arg("ssid"));
     if (server.arg("pass").length() > 0) saveSetting("pass", server.arg("pass"));
     if (server.arg("appass").length() >= 8) saveSetting("appass", server.arg("appass"));
+    if (server.hasArg("clearui")) saveSetting("uipass", String(""));
+    else if (server.arg("uipass").length() >= 4) saveSetting("uipass", server.arg("uipass"));
     server.send(200, "text/html",
                 "<body style=\"font-family:system-ui;background:#0d0d10;color:#ddd\">"
-                "Saved. Rebooting&hellip;</body>");
+                "Saved. Rebooting&hellip; The cube joins your network, or its "
+                "hotspot returns within ~30s if that fails.</body>");
     delay(300);
     ESP.restart();
   });
@@ -335,22 +516,9 @@ void setup() {
   strip2.Show();
 #endif
 
-  bool joined = false;
-  if (settings.wifiSsid.length() > 0) {
-    WiFi.mode(WIFI_STA);
-    WiFi.setHostname("cube");
-    WiFi.begin(settings.wifiSsid.c_str(), settings.wifiPass.c_str());
-    const uint32_t deadline = millis() + 15000;
-    while (WiFi.status() != WL_CONNECTED && millis() < deadline) delay(100);
-    joined = WiFi.status() == WL_CONNECTED;
-  }
-  if (!joined) {
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP("cube-light", settings.apPass.c_str());
-  }
-  Serial.printf("[net] %s ip=%s\n", joined ? "sta" : "ap",
-                joined ? WiFi.localIP().toString().c_str()
-                       : WiFi.softAPIP().toString().c_str());
+  // Non-blocking: netTick() in loop() drives join/fallback, so patterns
+  // start immediately and the AP always comes back if the network is lost.
+  netBegin();
 
   audioCaptureStart();
 
@@ -366,6 +534,7 @@ void setup() {
 }
 
 void loop() {
+  netTick();
   ArduinoOTA.handle();
   server.handleClient();
   handleRealtime();

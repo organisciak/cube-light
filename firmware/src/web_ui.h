@@ -1,8 +1,8 @@
 #pragma once
 
-// Minimal on-chip control page. Self-contained (no external assets) so it
-// works on the cube's own AP with no internet. The full React app remains
-// the rich dev UI; this is the "standing in the dust with a phone" surface.
+// Minimal on-chip control pages. Self-contained (no external assets) so they
+// work on the cube's own AP with no internet. The full React app remains the
+// rich dev UI; this is the "standing in the dust with a phone" surface.
 
 const char kIndexHtml[] = R"HTML(<!doctype html>
 <html><head><meta charset="utf-8">
@@ -56,21 +56,83 @@ const char kWifiHtml[] = R"HTML(<!doctype html>
 <style>
   body{font-family:system-ui;background:#0d0d10;color:#ddd;margin:0;padding:24px;max-width:420px;margin:auto}
   h1{font-size:18px;margin:12px 0 8px}
-  p{font-size:13px;color:#999;line-height:1.5}
+  h2{font-size:14px;margin:26px 0 4px;color:#bbb}
+  p{font-size:13px;color:#999;line-height:1.5;margin:6px 0}
   label{display:block;margin:14px 0 6px;font-size:13px;color:#999}
-  input{width:100%;box-sizing:border-box;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:8px;font-size:15px}
-  button{margin-top:20px;width:100%;padding:10px;border-radius:6px;border:none;background:#2a5aa5;color:#fff;font-size:15px}
+  input[type=text],input[type=password]{width:100%;box-sizing:border-box;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:8px;font-size:15px}
+  .pw{position:relative}
+  .pw button{position:absolute;right:6px;top:6px;bottom:6px;background:#2a2a33;color:#bbb;border:none;border-radius:4px;padding:0 10px;font-size:12px}
+  button.act{margin-top:12px;width:100%;padding:10px;border-radius:6px;border:none;background:#2a5aa5;color:#fff;font-size:15px}
+  button.sec{background:#26262e;color:#ccc}
+  #nets{margin:8px 0 0;padding:0;list-style:none;max-height:180px;overflow-y:auto}
+  #nets li{padding:8px;background:#17171d;border:1px solid #2a2a33;border-radius:6px;margin-bottom:4px;font-size:14px;display:flex;justify-content:space-between;cursor:pointer}
+  #nets li span{color:#777;font-size:12px}
+  #testresult{font-size:13px;margin-top:8px;min-height:18px}
+  .ok{color:#6fd66f}.bad{color:#e07a6a}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:#999;margin-top:10px}
   a{color:#7ab0ff}
 </style></head><body>
 <h1>WiFi &amp; security</h1>
-<p>Leave SSID blank to run as a standalone access point. The AP/OTA
-password protects both the "cube-light" hotspot and wireless flashing
-(min 8 characters). The cube reboots after saving.</p>
-<form method="POST" action="/wifi">
-<label>Join network — SSID</label><input name="ssid" value="%SSID%">
-<label>Network password</label><input name="pass" type="password" placeholder="(unchanged)">
-<label>AP / OTA password</label><input name="appass" type="password" placeholder="(unchanged)">
-<button>Save &amp; reboot</button>
+
+<h2>Join a network</h2>
+<p>Leave SSID blank to run as a standalone hotspot only. If joining fails,
+the cube always brings its hotspot back within ~30 seconds — you can't
+lock yourself out.</p>
+<button class="act sec" id="scan">Scan for networks</button>
+<ul id="nets"></ul>
+<form method="POST" action="/wifi" id="f">
+<label>SSID</label><input type="text" name="ssid" id="ssid" value="%SSID%">
+<label>Network password</label>
+<div class="pw"><input type="password" name="pass" id="pass" placeholder="(unchanged)"><button type="button" data-for="pass">show</button></div>
+<button class="act sec" type="button" id="test">Test connection</button>
+<div id="testresult"></div>
+
+<h2>Hotspot &amp; flashing</h2>
+<label>AP / OTA password (min 8 chars)</label>
+<div class="pw"><input type="password" name="appass" id="appass" placeholder="(unchanged)"><button type="button" data-for="appass">show</button></div>
+
+<h2>Settings console</h2>
+<p>Optional password for these pages (username <b>cube</b>) — keeps others
+on the same network from changing settings.</p>
+<label>Console password</label>
+<div class="pw"><input type="password" name="uipass" id="uipass" placeholder="%UIPASS%"><button type="button" data-for="uipass">show</button></div>
+<label class="chk"><input type="checkbox" name="clearui" value="1">Remove console password</label>
+
+<button class="act">Save &amp; reboot</button>
 </form>
 <p><a href="/">&larr; back</a></p>
-</body></html>)HTML";
+<script>
+const $=id=>document.getElementById(id);
+document.querySelectorAll('.pw button').forEach(b=>{
+  b.onclick=()=>{const i=$(b.dataset.for);const show=i.type==='password';i.type=show?'text':'password';b.textContent=show?'hide':'show'};
+});
+$('scan').onclick=async()=>{
+  $('scan').textContent='Scanning…';$('scan').disabled=true;
+  try{
+    const nets=await (await fetch('/api/scan')).json();
+    const ul=$('nets');ul.innerHTML='';
+    for(const n of nets){
+      const li=document.createElement('li');
+      li.innerHTML=`${n.ssid}<span>${n.rssi}dBm${n.open?' · open':''}</span>`;
+      li.onclick=()=>{$('ssid').value=n.ssid;$('pass').focus()};
+      ul.appendChild(li);
+    }
+    if(!nets.length) ul.innerHTML='<li>No networks found</li>';
+  }catch(e){$('nets').innerHTML='<li>Scan failed</li>'}
+  $('scan').textContent='Scan for networks';$('scan').disabled=false;
+};
+$('test').onclick=async()=>{
+  const r=$('testresult');
+  r.className='';r.textContent='Testing… (if you are on the cube’s hotspot it may drop for a moment — stay on this page)';
+  await fetch('/api/wifitest?ssid='+encodeURIComponent($('ssid').value)+'&pass='+encodeURIComponent($('pass').value),{method:'POST'});
+  for(let i=0;i<25;i++){
+    await new Promise(res=>setTimeout(res,1200));
+    try{
+      const s=await (await fetch('/api/wifitest')).json();
+      if(s.state==='ok'){r.className='ok';r.textContent='✓ Connected — got IP '+s.ip+'. Save to make it stick.';return}
+      if(s.state==='fail'){r.className='bad';r.textContent='✗ Could not join — check the password (use show) and try again.';return}
+    }catch(e){/* transient AP drop while testing */}
+  }
+  r.className='bad';r.textContent='Test timed out.';
+};
+</script></body></html>)HTML";
