@@ -35,6 +35,7 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
+#include "audio_capture.h"
 #include "cube_pattern.h"
 #include "cube_power.h"
 #include "web_ui.h"
@@ -176,7 +177,7 @@ void show(const uint8_t* rgb) {
 
 Geometry geo;
 Params params;
-AudioFrame audio;  // zeros until the mic stage lands
+AudioFrame audio;  // refreshed each frame from the mic capture task
 uint8_t frame[NUM_LEDS * 3];
 const Pattern* activePattern = nullptr;
 int activePatternIdx = 0;
@@ -351,6 +352,8 @@ void setup() {
                 joined ? WiFi.localIP().toString().c_str()
                        : WiFi.softAPIP().toString().c_str());
 
+  audioCaptureStart();
+
   MDNS.begin("cube");  // http://cube.local/
   ArduinoOTA.setHostname("cube");
   ArduinoOTA.setPassword(settings.apPass.c_str());
@@ -378,6 +381,7 @@ void loop() {
     return;
   }
 
+  audioCaptureRead(audio);
   const float t = (now - patternStartMs) / 1000.0f;
   ctx.t = t;
   ctx.dt = t - lastT;
