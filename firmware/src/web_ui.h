@@ -136,3 +136,46 @@ $('test').onclick=async()=>{
   r.className='bad';r.textContent='Test timed out.';
 };
 </script></body></html>)HTML";
+
+// Guest-facing game controller: 6-direction D-pad for snake/pacman.
+// Deliberately NOT auth-gated (see /api/game) so party guests can play
+// without the console password.
+const char kSnakeHtml[] = R"HTML(<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>cube snake</title>
+<style>
+  body{font-family:system-ui;background:#0d0d10;color:#ddd;margin:0;padding:16px;
+       display:flex;flex-direction:column;align-items:center;min-height:96vh;justify-content:center;
+       -webkit-user-select:none;user-select:none;touch-action:manipulation}
+  h1{font-size:16px;color:#999;margin:0 0 18px;font-weight:500}
+  .pad{display:grid;grid-template-columns:repeat(3,88px);grid-template-rows:repeat(3,88px);gap:10px}
+  .pad button,.zrow button{background:#1c1c24;border:1px solid #34343f;border-radius:14px;
+       color:#e8e8f0;font-size:30px;touch-action:manipulation;cursor:pointer}
+  .pad button:active,.zrow button:active{background:#2a5aa5}
+  .blank{visibility:hidden}
+  .zrow{display:flex;gap:10px;margin-top:14px;width:284px}
+  .zrow button{flex:1;height:70px;font-size:20px}
+  #st{margin-top:20px;font-size:13px;color:#777;min-height:16px}
+</style></head><body>
+<h1>cube-light · game pad</h1>
+<div class="pad">
+  <span class="blank"></span><button data-d="2">▲</button><span class="blank"></span>
+  <button data-d="1">◀</button><button data-d="3">▼</button><button data-d="0">▶</button>
+</div>
+<div class="zrow"><button data-d="4">Z ▲ up</button><button data-d="5">Z ▼ down</button></div>
+<div id="st"></div>
+<script>
+const st=document.getElementById('st');
+document.querySelectorAll('button[data-d]').forEach(b=>{
+  b.addEventListener('pointerdown',async e=>{
+    e.preventDefault();
+    if(navigator.vibrate)navigator.vibrate(8);
+    try{
+      const r=await fetch('/api/game?dir='+b.dataset.d,{method:'POST'});
+      const t=await r.text();
+      st.textContent=t==='ok'?'':t;
+    }catch(err){st.textContent='connection lost — retry'}
+  });
+});
+</script></body></html>)HTML";

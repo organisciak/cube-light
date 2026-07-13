@@ -36,7 +36,9 @@
 #include <WiFiUdp.h>
 
 #include "audio_capture.h"
+#include "cube_pacman.h"
 #include "cube_pattern.h"
+#include "cube_snake.h"
 #include "cube_power.h"
 #include "web_ui.h"
 
@@ -399,6 +401,7 @@ void handleStatus() {
           "\"";
   json += ",\"rssi\":" + String(WiFi.RSSI());
   json += ",\"fps\":" + String(CUBE_FPS);
+  json += ",\"uptimeS\":" + String(millis() / 1000);
   json += ",\"version\":\"" CUBE_VERSION "\"}";
   server.send(200, "application/json", json);
 }
@@ -499,6 +502,25 @@ void setupWebServer() {
     if (!authed()) return;
     server.send(200, "application/json",
                 "{\"state\":\"" + wifiTestResult + "\",\"ip\":\"" + wifiTestIp + "\"}");
+  });
+  // Game pad: intentionally NOT auth-gated so guests can play snake/pacman
+  // without the console password. Input queueing is harmless.
+  server.on("/snake", HTTP_GET, []() { server.send(200, "text/html", kSnakeHtml); });
+  server.on("/api/game", HTTP_POST, []() {
+    const int d = server.arg("dir").toInt();
+    if (d < 0 || d > 5) {
+      server.send(400, "text/plain", "bad dir");
+      return;
+    }
+    if (settings.patternId == "snake-3d") {
+      queueSnakeInput((SnakeDir)d);
+      server.send(200, "text/plain", "ok");
+    } else if (settings.patternId == "pacman-3d") {
+      queuePacmanInput((SnakeDir)d);
+      server.send(200, "text/plain", "ok");
+    } else {
+      server.send(200, "text/plain", "switch the cube to Snake or Pac-Man first");
+    }
   });
   server.on("/wifi", HTTP_GET, []() {
     if (!authed()) return;
