@@ -1,5 +1,5 @@
 // Port of src/shared/patterns/comet.ts. Particle list becomes a ring-ish
-// fixed pool (1 spawn/frame, tailLife <= 5s -> ~150 max; pool holds 256).
+// fixed pool (1 spawn/frame, tailLife <= 5s -> ~150 max; pool holds 192).
 #include <cmath>
 #include <cstring>
 
@@ -15,7 +15,7 @@ struct CometParticle {
   float age;
 };
 
-constexpr int kMaxParticles = 256;
+constexpr int kMaxParticles = 192;
 CometParticle s_particles[kMaxParticles];
 int s_particleCount = 0;
 float s_lastT = 0;

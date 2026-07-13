@@ -17,6 +17,7 @@ import { life3d } from './life3d';
 import { snake3d } from './snake3d';
 import { pacman3d } from './pacman3d';
 import { fireworks } from './fireworks';
+import { barEq } from './barEq';
 
 export const patterns: Record<string, Pattern> = {
   [wavySheet.meta.id]: wavySheet,
@@ -25,6 +26,7 @@ export const patterns: Record<string, Pattern> = {
   [rotatingPlanes.meta.id]: rotatingPlanes,
   [audioRipple.meta.id]: audioRipple,
   [spectrumDiscs.meta.id]: spectrumDiscs,
+  [barEq.meta.id]: barEq,
   [cloud.meta.id]: cloud,
   [dayCycle.meta.id]: dayCycle,
   [comet.meta.id]: comet,

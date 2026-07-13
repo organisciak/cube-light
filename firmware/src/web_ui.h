@@ -27,8 +27,10 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
 <input type="number" id="supply" min="0" step="100">
 <label>Color order</label>
 <select id="order"><option>RGB</option><option>GRB</option><option>BRG</option><option>RBG</option><option>GBR</option><option>BGR</option></select>
+<label>Which way is up</label>
+<select id="up"><option value="z+">Z+ (default)</option><option value="z-">Z&minus;</option><option value="x+">X+</option><option value="x-">X&minus;</option><option value="y+">Y+</option><option value="y-">Y&minus;</option></select>
 <div class="stat" id="stat"></div>
-<p><a href="/wifi">WiFi &amp; security settings</a></p>
+<p><a href="/wifi">WiFi &amp; security settings</a> &middot; <a href="/calibrate">Wiring calibration</a> &middot; <a href="/snake">Game pad</a></p>
 <script>
 const $=id=>document.getElementById(id);
 async function post(url){await fetch(url,{method:'POST'})}
@@ -38,7 +40,7 @@ async function refresh(){
   if(sel.options.length===0) for(const p of s.patterns){const o=document.createElement('option');o.value=o.textContent=p;sel.appendChild(o)}
   sel.value=s.pattern;
   $('bright').value=Math.round(s.brightness*100);$('brightv').textContent=$('bright').value+'%';
-  $('supply').value=s.supplyMA; $('order').value=s.colorOrder;
+  $('supply').value=s.supplyMA; $('order').value=s.colorOrder; $('up').value=s.up;
   $('stat').textContent=`ip ${s.ip} · rssi ${s.rssi}dBm · ${s.fps}fps target · v${s.version}`;
 }
 $('pattern').onchange=e=>post('/api/pattern?id='+encodeURIComponent(e.target.value));
@@ -46,6 +48,7 @@ $('bright').oninput=e=>{$('brightv').textContent=e.target.value+'%'};
 $('bright').onchange=e=>post('/api/brightness?v='+(e.target.value/100));
 $('supply').onchange=e=>post('/api/supply?ma='+e.target.value);
 $('order').onchange=e=>post('/api/order?v='+e.target.value);
+$('up').onchange=e=>post('/api/up?v='+encodeURIComponent(e.target.value));
 refresh();
 </script></body></html>)HTML";
 
@@ -178,4 +181,97 @@ document.querySelectorAll('button[data-d]').forEach(b=>{
     }catch(err){st.textContent='connection lost — retry'}
   });
 });
+</script></body></html>)HTML";
+
+// Wiring-calibration wizard: lights one LED at a time (lit-pixel pattern),
+// the user records where it appears, the on-chip solver narrows the 8 flip
+// combos x offset to the unique wiring. Samples live in the textarea (and
+// localStorage) as hand-editable "led,x,y,z" lines, mirroring the React
+// app's CSV.
+const char kCalibrateHtml[] = R"HTML(<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cube calibration</title>
+<style>
+  body{font-family:system-ui;background:#0d0d10;color:#ddd;margin:0;padding:24px;max-width:440px;margin:auto}
+  h1{font-size:18px;margin:12px 0 8px}
+  p{font-size:13px;color:#999;line-height:1.5;margin:6px 0}
+  label{display:block;margin:12px 0 4px;font-size:13px;color:#999}
+  input,textarea{box-sizing:border-box;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:8px;font-size:15px}
+  textarea{width:100%;height:130px;font-family:ui-monospace,monospace;font-size:13px}
+  .row{display:flex;gap:8px;align-items:end}
+  .row div{flex:1}
+  .row input{width:100%}
+  button{padding:10px 14px;border-radius:6px;border:none;background:#2a5aa5;color:#fff;font-size:14px;cursor:pointer}
+  button.sec{background:#26262e;color:#ccc}
+  #result{font-size:13px;line-height:1.6;margin-top:12px;min-height:20px}
+  .ok{color:#6fd66f}.warn{color:#e0b76a}.bad{color:#e07a6a}
+  a{color:#7ab0ff}
+</style></head><body>
+<h1>Wiring calibration</h1>
+<p>1&#41; <b>Start</b> switches the cube to single-pixel mode. 2&#41; Light an
+LED, find it on the cube, and record its (x,y,z) — pick an origin corner
+once and stick with it. 3&#41; <b>Solve</b> after 2&ndash;3 samples; apply
+the layout when it&rsquo;s unique.</p>
+<button id="start">Start (single-pixel mode)</button>
+<div class="row" style="margin-top:14px">
+  <div><label>LED index</label><input id="led" type="number" min="0" max="999" value="0"></div>
+  <button id="light" class="sec">Light it</button>
+</div>
+<div class="row" style="margin-top:8px">
+  <div><label>x</label><input id="sx" type="number" min="0" max="9"></div>
+  <div><label>y</label><input id="sy" type="number" min="0" max="9"></div>
+  <div><label>z</label><input id="sz" type="number" min="0" max="9"></div>
+  <button id="add" class="sec">Add</button>
+</div>
+<label>Samples (led,x,y,z — hand-editable)</label>
+<textarea id="samples" spellcheck="false"></textarea>
+<div class="row" style="margin-top:10px">
+  <button id="solve">Solve</button>
+  <button id="apply" class="sec" disabled>Apply layout</button>
+</div>
+<div id="result"></div>
+<p><a href="/">&larr; back to console</a></p>
+<script>
+const $=id=>document.getElementById(id);
+let solved=null;
+$('samples').value=localStorage.getItem('cube-cal')||'';
+const save=()=>localStorage.setItem('cube-cal',$('samples').value);
+$('samples').addEventListener('input',save);
+async function post(u,body){return fetch(u,{method:'POST',body})}
+$('start').onclick=async()=>{await post('/api/pattern?id=lit-pixel');await light()};
+async function light(){await post('/api/param?key=ledIdx&v='+(+$('led').value))}
+$('light').onclick=light;
+$('led').addEventListener('change',light);
+$('add').onclick=()=>{
+  const line=[+$('led').value,+$('sx').value,+$('sy').value,+$('sz').value];
+  if(line.some(v=>Number.isNaN(v))){alert('fill x, y, z');return}
+  $('samples').value=($('samples').value.trim()+'\n'+line.join(',')).trim();save();
+  $('sx').value=$('sy').value=$('sz').value='';
+};
+$('solve').onclick=async()=>{
+  const r=$('result');r.className='';r.textContent='Solving…';
+  const res=await (await post('/api/calibrate/solve',$('samples').value)).json();
+  solved=null;$('apply').disabled=true;
+  if(res.candidates.length===1){
+    solved=res.candidates[0];$('apply').disabled=false;
+    r.className='ok';
+    r.textContent=`Unique layout found: flips ${solved.fx?'X':''}${solved.fy?'Y':''}${solved.fz?'Z':''}${!(solved.fx||solved.fy||solved.fz)?'none':''}, offset ${solved.off}. Apply it!`;
+  }else if(res.candidates.length>1){
+    r.className='warn';
+    r.textContent=`${res.candidates.length} layouts still match. Light LED ${res.suggest} next — it best tells them apart.`;
+    $('led').value=res.suggest;light();
+  }else if(res.bestEffort){
+    r.className='bad';
+    r.textContent=`No layout matches all ${res.samples} samples — likely a typo. Closest misses ${res.bestEffort.misses}; re-check your entries.`;
+  }else{
+    r.className='bad';r.textContent='No valid samples yet.';
+  }
+};
+$('apply').onclick=async()=>{
+  if(!solved)return;
+  await post(`/api/layout?fx=${solved.fx}&fy=${solved.fy}&fz=${solved.fz}&off=${solved.off}`);
+  $('result').className='ok';
+  $('result').textContent='Layout applied and saved. Pick a pattern on the console to admire your correctly-mapped cube.';
+};
 </script></body></html>)HTML";

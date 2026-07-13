@@ -36,6 +36,7 @@
 #include <WiFiUdp.h>
 
 #include "audio_capture.h"
+#include "cube_calibration.h"
 #include "cube_pacman.h"
 #include "cube_pattern.h"
 #include "cube_snake.h"
@@ -101,6 +102,8 @@ struct Settings {
   String colorOrder;  // "RGB", "GRB", ...
   float brightness;   // 0..1
   uint32_t supplyMA;  // 0 = limiter off
+  Layout layout;      // wiring calibration
+  String upAxis;      // "z+","z-","x+","x-","y+","y-"
 };
 
 Preferences prefs;
@@ -116,6 +119,21 @@ void loadSettings() {
   settings.colorOrder = prefs.getString("order", CUBE_COLOR_ORDER);
   settings.brightness = prefs.getFloat("bright", 1.0f);
   settings.supplyMA = prefs.getUInt("supply", CUBE_SUPPLY_MA);
+  settings.layout.flipX = prefs.getBool("flipx", false);
+  settings.layout.flipY = prefs.getBool("flipy", false);
+  settings.layout.flipZ = prefs.getBool("flipz", false);
+  settings.layout.ledOffset = prefs.getInt("ledoff", 0);
+  settings.upAxis = prefs.getString("up", "z+");
+  prefs.end();
+}
+
+void saveLayoutAndUp() {
+  prefs.begin("cube", false);
+  prefs.putBool("flipx", settings.layout.flipX);
+  prefs.putBool("flipy", settings.layout.flipY);
+  prefs.putBool("flipz", settings.layout.flipZ);
+  prefs.putInt("ledoff", settings.layout.ledOffset);
+  prefs.putString("up", settings.upAxis);
   prefs.end();
 }
 
@@ -184,6 +202,11 @@ void show(const uint8_t* rgb) {
 // ---- pattern engine -----------------------------------------------------------
 
 Geometry geo;
+
+void applyGeometry() {
+  geo.rebuild(settings.layout, upAxisFromString(settings.upAxis.c_str()));
+}
+
 Params params;
 AudioFrame audio;  // refreshed each frame from the mic capture task
 uint8_t frame[NUM_LEDS * 3];
@@ -402,6 +425,11 @@ void handleStatus() {
   json += ",\"rssi\":" + String(WiFi.RSSI());
   json += ",\"fps\":" + String(CUBE_FPS);
   json += ",\"uptimeS\":" + String(millis() / 1000);
+  json += ",\"up\":\"" + settings.upAxis + "\"";
+  json += ",\"layout\":{\"flipX\":" + String(settings.layout.flipX ? "true" : "false") +
+          ",\"flipY\":" + String(settings.layout.flipY ? "true" : "false") +
+          ",\"flipZ\":" + String(settings.layout.flipZ ? "true" : "false") +
+          ",\"ledOffset\":" + String(settings.layout.ledOffset) + "}";
   json += ",\"version\":\"" CUBE_VERSION "\"}";
   server.send(200, "application/json", json);
 }
@@ -503,6 +531,77 @@ void setupWebServer() {
     server.send(200, "application/json",
                 "{\"state\":\"" + wifiTestResult + "\",\"ip\":\"" + wifiTestIp + "\"}");
   });
+  server.on("/api/up", HTTP_POST, []() {
+    if (!authed()) return;
+    settings.upAxis = server.arg("v");
+    applyGeometry();
+    saveLayoutAndUp();
+    server.send(200, "text/plain", "ok");
+  });
+  server.on("/api/layout", HTTP_POST, []() {
+    if (!authed()) return;
+    settings.layout.flipX = server.arg("fx") == "1";
+    settings.layout.flipY = server.arg("fy") == "1";
+    settings.layout.flipZ = server.arg("fz") == "1";
+    settings.layout.ledOffset = server.arg("off").toInt();
+    applyGeometry();
+    saveLayoutAndUp();
+    server.send(200, "text/plain", "ok");
+  });
+  // Set a live pattern parameter (not persisted). Used by the calibration
+  // page to steer lit-pixel, and handy for tweaking any pattern.
+  server.on("/api/param", HTTP_POST, []() {
+    if (!authed()) return;
+    const String key = server.arg("key");
+    const String v = server.arg("v");
+    const String type = server.arg("type");
+    if (type == "str") params.setStr(key.c_str(), v.c_str());
+    else if (type == "bool") params.setBool(key.c_str(), v == "true" || v == "1");
+    else params.setNum(key.c_str(), v.toFloat());
+    server.send(200, "text/plain", "ok");
+  });
+  // Body: text lines "led,x,y,z". Returns candidates/suggestion as JSON.
+  server.on("/api/calibrate/solve", HTTP_POST, []() {
+    if (!authed()) return;
+    static CalSample samples[64];
+    int count = 0;
+    const String body = server.arg("plain");
+    int pos = 0;
+    while (pos < (int)body.length() && count < 64) {
+      int nl = body.indexOf('\n', pos);
+      if (nl < 0) nl = body.length();
+      int a, b, c, d;
+      if (sscanf(body.substring(pos, nl).c_str(), "%d,%d,%d,%d", &a, &b, &c, &d) == 4 &&
+          a >= 0 && a < NUM_LEDS && b >= 0 && b < CUBE_N && c >= 0 && c < CUBE_N &&
+          d >= 0 && d < CUBE_N) {
+        samples[count++] = {(uint16_t)a, (uint8_t)b, (uint8_t)c, (uint8_t)d};
+      }
+      pos = nl + 1;
+    }
+    const CalResult r = solveCalibration(samples, count);
+    String json = "{\"samples\":" + String(count) + ",\"candidates\":[";
+    for (int i = 0; i < r.candidateCount; i++) {
+      if (i) json += ',';
+      json += "{\"fx\":" + String(r.candidates[i].flipX ? 1 : 0) +
+              ",\"fy\":" + String(r.candidates[i].flipY ? 1 : 0) +
+              ",\"fz\":" + String(r.candidates[i].flipZ ? 1 : 0) +
+              ",\"off\":" + String(r.candidates[i].ledOffset) + "}";
+    }
+    json += "],\"suggest\":" + String(r.suggestedNextLed);
+    if (r.candidateCount == 0 && count > 0) {
+      json += ",\"bestEffort\":{\"fx\":" + String(r.bestEffort.flipX ? 1 : 0) +
+              ",\"fy\":" + String(r.bestEffort.flipY ? 1 : 0) +
+              ",\"fz\":" + String(r.bestEffort.flipZ ? 1 : 0) +
+              ",\"off\":" + String(r.bestEffort.ledOffset) +
+              ",\"misses\":" + String(r.bestEffortMisses) + "}";
+    }
+    json += "}";
+    server.send(200, "application/json", json);
+  });
+  server.on("/calibrate", HTTP_GET, []() {
+    if (!authed()) return;
+    server.send(200, "text/html", kCalibrateHtml);
+  });
   // Game pad: intentionally NOT auth-gated so guests can play snake/pacman
   // without the console password. Input queueing is harmless.
   server.on("/snake", HTTP_GET, []() { server.send(200, "text/html", kSnakeHtml); });
@@ -552,6 +651,7 @@ void setup() {
   Serial.begin(115200);
   loadSettings();
   applyColorOrder(settings.colorOrder);
+  applyGeometry();
 #if CUBE_BUTTON_PIN >= 0
   pinMode(CUBE_BUTTON_PIN, INPUT_PULLUP);
 #endif
