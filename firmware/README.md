@@ -65,3 +65,21 @@ calibrated layout when that matters).
    and eyeball it next to the TS original.
 
 Ported so far: `wavy-sheet`, `plasma`, `rotating-planes`, `solid`.
+
+## Hardware gotchas (learned the hard way)
+
+- **Arduino core 2.x WiFi crash-loop on mesh networks.** The stock PlatformIO
+  `espressif32` platform is frozen at arduino-esp32 2.x (IDF 4.4), whose WiFi
+  stack dies with `InstructionFetchError` in `sta_recv_mgmt` /
+  `offchan_recv_action` when a router sends 802.11k/v roaming action frames —
+  i.e., the instant it joins a mesh network as a client. AP mode never
+  triggers it (nobody sends the cube those frames), which made it look like
+  "joining WiFi broke the cube." Fixed by the pioarduino platform pin in
+  platformio.ini (arduino-esp32 3.x / IDF 5.5).
+- **Startup ordering matters.** Network services (mDNS/OTA/UDP/HTTP) and the
+  mic start from `startNetServices()` only after an interface is up.
+- **GPIO18 relay must be HIGH** or the LED string has no power (looks exactly
+  like a data-wiring failure).
+- Debug flags for bisecting on-hardware problems:
+  `-DCUBE_LED_BISECT_DISABLE`, `-DCUBE_MIC_BISECT_NO_I2S`,
+  `-DCUBE_MIC_BISECT_NO_TASK`.

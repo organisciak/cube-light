@@ -22,7 +22,6 @@ constexpr int kSamples = 512;  // -> 256 bins, ~43Hz each, ~23ms per frame
 
 float vReal[kSamples];
 float vImag[kSamples];
-ArduinoFFT<float> FFT(vReal, vImag, kSamples, (float)kSampleRate);
 
 // Shared with the render loop; guarded by a spinlock kept only for the copy.
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -65,6 +64,8 @@ bool initI2s() {
 
 void captureTask(void*) {
   static int16_t raw[kSamples];
+  static ArduinoFFT<float> FFT(vReal, vImag, kSamples, (float)kSampleRate);
+  vTaskDelay(pdMS_TO_TICKS(500));  // let WiFi/net bring-up settle first
   for (;;) {
     size_t bytesRead = 0;
     i2s_read(kPort, raw, sizeof(raw), &bytesRead, portMAX_DELAY);
@@ -118,12 +119,20 @@ void captureTask(void*) {
 }  // namespace
 
 bool audioCaptureStart() {
+#ifdef CUBE_MIC_BISECT_NO_I2S
+  Serial.println("[mic] BISECT: mic fully disabled");
+  return false;
+#endif
   for (int b = 0; b < AUDIO_BANDS; b++) s_bandPeak[b] = 1.0f;
   if (!initI2s()) {
     Serial.println("[mic] i2s init failed");
     return false;
   }
-  xTaskCreatePinnedToCore(captureTask, "mic", 4096, nullptr, 1, nullptr, 0);
+#ifdef CUBE_MIC_BISECT_NO_TASK
+  Serial.println("[mic] BISECT: i2s installed, task NOT started");
+#else
+  xTaskCreatePinnedToCore(captureTask, "mic", 8192, nullptr, 1, nullptr, 0);
+#endif
   Serial.printf("[mic] pdm capture on data=%d clk=%d\n", CUBE_MIC_DATA_PIN,
                 CUBE_MIC_CLK_PIN);
   return true;

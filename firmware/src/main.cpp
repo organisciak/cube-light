@@ -155,6 +155,10 @@ void applyColorOrder(const String& order) {
 }
 
 void show(const uint8_t* rgb) {
+#ifdef CUBE_LED_BISECT_DISABLE
+  (void)rgb;
+  return;
+#endif
   const float limit = currentLimitScale(rgb, NUM_LEDS, CUBE_PER_LED_MA,
                                         CUBE_IDLE_MA_PER_LED, settings.supplyMA);
   const float k = limit * settings.brightness;
@@ -275,6 +279,8 @@ uint32_t wifiTestStartMs = 0;
 String wifiTestResult = "idle";  // idle | testing | ok | fail
 String wifiTestIp = "";
 
+void startNetServices();
+
 void startAp() {
   WiFi.mode(WIFI_AP);
   WiFi.softAP("cube-light", settings.apPass.c_str());
@@ -282,6 +288,7 @@ void startAp() {
   netStampMs = millis();
   lastStaRetryMs = millis();
   Serial.printf("[net] ap up, ip=%s\n", WiFi.softAPIP().toString().c_str());
+  startNetServices();
 }
 
 void netBegin() {
@@ -321,6 +328,7 @@ void netTick() {
         netState = NetState::StaOnline;
         staLostMs = 0;
         Serial.printf("[net] sta ip=%s\n", WiFi.localIP().toString().c_str());
+        startNetServices();
       } else if (now - netStampMs > 20000) {
         Serial.println("[net] join timed out; falling back to AP");
         startAp();
@@ -393,6 +401,26 @@ void handleStatus() {
   json += ",\"fps\":" + String(CUBE_FPS);
   json += ",\"version\":\"" CUBE_VERSION "\"}";
   server.send(200, "application/json", json);
+}
+
+void setupWebServer();
+bool servicesStarted = false;
+
+// mDNS, OTA, the realtime UDP listener, and the HTTP console. Must only run
+// once a network interface exists; starting them during the STA join
+// corrupts the WiFi blob's management-frame callbacks (InstructionFetchError
+// in sta_recv_mgmt) and crash-loops the chip.
+void startNetServices() {
+  if (servicesStarted) return;
+  servicesStarted = true;
+  MDNS.begin("cube");  // http://cube.local/
+  ArduinoOTA.setHostname("cube");
+  ArduinoOTA.setPassword(settings.apPass.c_str());
+  ArduinoOTA.begin();
+  udp.begin(kRealtimePort);
+  setupWebServer();
+  audioCaptureStart();
+  Serial.println("[net] services up (mdns/ota/udp/http/mic)");
 }
 
 void setupWebServer() {
@@ -509,25 +537,21 @@ void setup() {
   pinMode(CUBE_RELAY_PIN, OUTPUT);
   digitalWrite(CUBE_RELAY_PIN, HIGH);  // power the LED string
 #endif
+#ifndef CUBE_LED_BISECT_DISABLE
   strip.Begin();
   strip.Show();  // all off
-#if CUBE_LED_PIN2 >= 0
+#endif
+#if CUBE_LED_PIN2 >= 0 && !defined(CUBE_LED_BISECT_DISABLE)
   strip2.Begin();
   strip2.Show();
 #endif
 
   // Non-blocking: netTick() in loop() drives join/fallback, so patterns
   // start immediately and the AP always comes back if the network is lost.
+  // The mic and all network services start only after an interface is up —
+  // initializing anything heavy while the join handshake is in flight
+  // corrupts the WiFi stack and crash-loops the chip (found the hard way).
   netBegin();
-
-  audioCaptureStart();
-
-  MDNS.begin("cube");  // http://cube.local/
-  ArduinoOTA.setHostname("cube");
-  ArduinoOTA.setPassword(settings.apPass.c_str());
-  ArduinoOTA.begin();
-  udp.begin(kRealtimePort);
-  setupWebServer();
 
   setPatternById(settings.patternId);
   if (!activePattern) setPatternByIndex(0);
@@ -535,6 +559,12 @@ void setup() {
 
 void loop() {
   netTick();
+  if (!servicesStarted) {
+    // Nothing else runs until the network is up: rendering to the RMT
+    // while the join handshake is in flight is part of the crash recipe.
+    delay(2);
+    return;
+  }
   ArduinoOTA.handle();
   server.handleClient();
   handleRealtime();
