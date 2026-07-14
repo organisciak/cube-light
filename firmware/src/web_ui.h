@@ -17,7 +17,22 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
   .row output{min-width:48px;text-align:right;font-variant-numeric:tabular-nums}
   a{color:#7ab0ff}
   .stat{font-size:12px;color:#777;margin-top:24px;line-height:1.7}
+  nav{display:flex;gap:14px;font-size:13px;margin-bottom:14px}
+  nav a{color:#7ab0ff;text-decoration:none}
+  nav b{color:#eee}
+  details{margin-top:22px;border-top:1px solid #222;padding-top:8px}
+  summary{font-size:14px;color:#bbb;cursor:pointer;padding:6px 0}
+  .prow{display:flex;gap:10px;align-items:center;margin:10px 0}
+  .prow label{flex:0 0 46%;margin:0}
+  .prow input[type=range]{flex:1}
+  .prow select,.prow input[type=text]{flex:1}
+  .prow output{min-width:44px;text-align:right;font-size:12px;color:#aaa}
+  .meter{height:10px;background:#1a1a20;border-radius:5px;overflow:hidden;flex:1}
+  .meter div{height:100%;background:#2a5aa5;width:0%}
+  button{padding:8px 12px;border-radius:6px;border:none;background:#26262e;color:#ccc;font-size:13px;cursor:pointer}
+  button.pri{background:#2a5aa5;color:#fff}
 </style></head><body>
+<nav><b>Console</b><a href="/calibrate">Calibrate</a><a href="/snake">Game pad</a><a href="/wifi">WiFi</a></nav>
 <h1>cube-light</h1>
 <label>Pattern</label>
 <select id="pattern"></select>
@@ -29,8 +44,31 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
 <select id="order"><option>RGB</option><option>GRB</option><option>BRG</option><option>RBG</option><option>GBR</option><option>BGR</option></select>
 <label>Which way is up</label>
 <select id="up"><option value="z+">Z+ (default)</option><option value="z-">Z&minus;</option><option value="x+">X+</option><option value="x-">X&minus;</option><option value="y+">Y+</option><option value="y-">Y&minus;</option></select>
+<details open id="paramsBox"><summary>Pattern parameters</summary>
+<div id="params"></div>
+<div class="prow"><button class="pri" id="saveParams">Save as power-on defaults</button></div>
+</details>
+
+<details><summary>Microphone</summary>
+<div class="prow"><label>Level</label><div class="meter"><div id="mLevel"></div></div><output id="mLevelV"></output></div>
+<div class="prow"><label>Beat</label><div class="meter"><div id="mBeat"></div></div></div>
+<div class="prow"><label>Raw RMS / frames</label><output id="mRaw" style="min-width:160px;text-align:left"></output></div>
+<div class="prow"><label>Channel</label><select id="micCh"><option value="right">right</option><option value="left">left</option></select></div>
+<div class="prow"><label>Squelch (raw RMS)</label><input type="number" id="micSq" style="flex:1" min="0" step="5"></div>
+<div class="prow"><button class="pri" id="micApply">Apply mic config</button></div>
+</details>
+
+<details><summary>LED outputs</summary>
+<p style="font-size:12px;color:#888">Single chain: set output 2 pin to -1.
+Split chain: output 1 drives LEDs 0..split-1, output 2 the rest (feed the
+second half at its original start, same wire direction).</p>
+<div class="prow"><label>Output 1 GPIO</label><input type="number" id="lPin" style="flex:1"></div>
+<div class="prow"><label>Output 2 GPIO (-1 off)</label><input type="number" id="lPin2" style="flex:1"></div>
+<div class="prow"><label>Split (LEDs on output 1)</label><input type="number" id="lSplit" style="flex:1" min="1" max="999"></div>
+<div class="prow"><button class="pri" id="ledApply">Apply LED config</button></div>
+</details>
+
 <div class="stat" id="stat"></div>
-<p><a href="/wifi">WiFi &amp; security settings</a> &middot; <a href="/calibrate">Wiring calibration</a> &middot; <a href="/snake">Game pad</a></p>
 <script>
 const $=id=>document.getElementById(id);
 async function post(url){await fetch(url,{method:'POST'})}
@@ -41,9 +79,56 @@ async function refresh(){
   sel.value=s.pattern;
   $('bright').value=Math.round(s.brightness*100);$('brightv').textContent=$('bright').value+'%';
   $('supply').value=s.supplyMA; $('order').value=s.colorOrder; $('up').value=s.up;
+  $('lPin').value=s.ledPin; $('lPin2').value=s.ledPin2; $('lSplit').value=s.ledSplit;
   $('stat').textContent=`ip ${s.ip} · rssi ${s.rssi}dBm · ${s.fps}fps target · v${s.version}`;
+  loadParams();
 }
-$('pattern').onchange=e=>post('/api/pattern?id='+encodeURIComponent(e.target.value));
+const T={NUM:0,BOOL:1,ENUM:2,PAL:3,STR:4};
+async function loadParams(){
+  const d=await (await fetch('/api/params')).json();
+  const box=$('params');box.innerHTML='';
+  for(const sp of d.specs){
+    const row=document.createElement('div');row.className='prow';
+    const lab=document.createElement('label');lab.textContent=sp.label;row.appendChild(lab);
+    let ctl,out=null;
+    if(sp.type===T.BOOL){
+      ctl=document.createElement('input');ctl.type='checkbox';ctl.checked=sp.value==='1';
+      ctl.onchange=()=>post(`/api/param?type=bool&key=${sp.key}&v=${ctl.checked?1:0}`);
+    }else if(sp.type===T.ENUM||sp.type===T.PAL){
+      ctl=document.createElement('select');
+      const opts=sp.type===T.PAL?d.palettes:sp.options.split(',');
+      for(const o of opts){const e=document.createElement('option');e.value=e.textContent=o;ctl.appendChild(e)}
+      ctl.value=sp.value;
+      ctl.onchange=()=>post(`/api/param?type=str&key=${sp.key}&v=${encodeURIComponent(ctl.value)}`);
+    }else if(sp.type===T.STR){
+      ctl=document.createElement('input');ctl.type='text';ctl.value=sp.value;
+      ctl.onchange=()=>post(`/api/param?type=str&key=${sp.key}&v=${encodeURIComponent(ctl.value)}`);
+    }else{
+      ctl=document.createElement('input');ctl.type='range';
+      ctl.min=sp.min;ctl.max=sp.max;ctl.step=sp.step||0.01;ctl.value=parseFloat(sp.value);
+      out=document.createElement('output');out.textContent=(+sp.value).toFixed(2).replace(/\.?0+$/,'');
+      ctl.oninput=()=>{out.textContent=(+ctl.value).toFixed(2).replace(/\.?0+$/,'')};
+      ctl.onchange=()=>post(`/api/param?type=num&key=${sp.key}&v=${ctl.value}`);
+    }
+    row.appendChild(ctl);if(out)row.appendChild(out);
+    box.appendChild(row);
+  }
+}
+$('saveParams').onclick=async()=>{await post('/api/params/save');$('saveParams').textContent='Saved ✓';setTimeout(()=>$('saveParams').textContent='Save as power-on defaults',1500)};
+$('micApply').onclick=()=>post(`/api/miccfg?ch=${$('micCh').value}&squelch=${$('micSq').value}`);
+$('ledApply').onclick=()=>post(`/api/ledcfg?pin=${$('lPin').value}&pin2=${$('lPin2').value}&split=${$('lSplit').value}`);
+let micInit=false;
+setInterval(async()=>{
+  try{
+    const a=await (await fetch('/api/audio')).json();
+    $('mLevel').style.width=Math.round(a.level*100)+'%';
+    $('mLevelV').textContent=a.level.toFixed(2);
+    $('mBeat').style.width=Math.round(a.beat*100)+'%';
+    $('mRaw').textContent=`rms ${a.rms} · dc ${a.dc} · raw ${a.rawMin}..${a.rawMax} · ${a.frames} frames`;
+    if(!micInit){micInit=true;$('micCh').value=a.channel;$('micSq').value=a.squelch}
+  }catch(e){}
+},700);
+$('pattern').onchange=async e=>{await post('/api/pattern?id='+encodeURIComponent(e.target.value));loadParams()};
 $('bright').oninput=e=>{$('brightv').textContent=e.target.value+'%'};
 $('bright').onchange=e=>post('/api/brightness?v='+(e.target.value/100));
 $('supply').onchange=e=>post('/api/supply?ma='+e.target.value);
@@ -74,7 +159,11 @@ const char kWifiHtml[] = R"HTML(<!doctype html>
   .ok{color:#6fd66f}.bad{color:#e07a6a}
   .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:#999;margin-top:10px}
   a{color:#7ab0ff}
+  nav{display:flex;gap:14px;font-size:13px;margin-bottom:14px}
+  nav a{color:#7ab0ff;text-decoration:none}
+  nav b{color:#eee}
 </style></head><body>
+<nav><a href="/">Console</a><a href="/calibrate">Calibrate</a><a href="/snake">Game pad</a><b>WiFi</b></nav>
 <h1>WiFi &amp; security</h1>
 
 <h2>Join a network</h2>
@@ -207,7 +296,11 @@ const char kCalibrateHtml[] = R"HTML(<!doctype html>
   #result{font-size:13px;line-height:1.6;margin-top:12px;min-height:20px}
   .ok{color:#6fd66f}.warn{color:#e0b76a}.bad{color:#e07a6a}
   a{color:#7ab0ff}
+  nav{display:flex;gap:14px;font-size:13px;margin-bottom:14px}
+  nav a{color:#7ab0ff;text-decoration:none}
+  nav b{color:#eee}
 </style></head><body>
+<nav><a href="/">Console</a><b>Calibrate</b><a href="/snake">Game pad</a><a href="/wifi">WiFi</a></nav>
 <h1>Wiring calibration</h1>
 <p>1&#41; <b>Start</b> switches the cube to single-pixel mode. 2&#41; Light an
 LED, find it on the cube, and record its (x,y,z) — pick an origin corner

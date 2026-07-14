@@ -24,6 +24,10 @@ struct PaletteRef {
   int stopCount;             // Gradient only
 };
 
+/** All selectable palette names, "none" first (mirrors TS paletteNames). */
+extern const char* const kPaletteNames[];
+extern const int kPaletteNameCount;
+
 /** True when `name` names a real palette (i.e. not "none"/unknown). */
 bool paletteActive(const char* name);
 

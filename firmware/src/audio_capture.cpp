@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 #include <arduinoFFT.h>
-#include <driver/i2s.h>
+#include <driver/i2s_pdm.h>
 
 #include "cube_audio.h"
 
@@ -16,50 +16,56 @@
 namespace cube {
 namespace {
 
-constexpr i2s_port_t kPort = I2S_NUM_0;  // PDM RX exists only on I2S0
+// IDF 5.x: PDM RX uses the dedicated i2s_pdm channel API. The legacy
+// driver/i2s.h path delivers all-zero samples on this core (clock runs,
+// data never latches) — diagnosed on hardware via /api/audio.
 constexpr int kSampleRate = 22050;
 constexpr int kSamples = 512;  // -> 256 bins, ~43Hz each, ~23ms per frame
 
 float vReal[kSamples];
 float vImag[kSamples];
 
-// Shared with the render loop; guarded by a spinlock kept only for the copy.
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 AudioFrame s_frame;
 BeatDetector s_beat;
 
-// Per-band adaptive normalization: running peak with slow decay so band
-// output spans 0..1 across quiet rooms and loud camps alike.
 float s_bandPeak[AUDIO_BANDS];
 float s_levelPeak = 0.01f;
-constexpr float kPeakDecay = 0.9995f;   // per FFT frame (~43Hz)
-constexpr float kSquelchRms = 60.0f;    // raw-sample RMS below this = silence
+constexpr float kPeakDecay = 0.9995f;  // per FFT frame (~43Hz)
+float s_squelchRms = 60.0f;
+bool s_channelLeft = false;
+volatile bool s_reconfigPending = false;
+AudioStats s_stats = {0, 0, 0, 0, 0};
 
-bool initI2s() {
-  const i2s_config_t cfg = {
-      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_PDM),
-      .sample_rate = kSampleRate,
-      .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-      // If the mic reads silent on hardware, the first thing to try is
-      // ONLY_LEFT here — PDM mics differ on which edge they drive.
-      .channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT,
-      .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-      .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-      .dma_buf_count = 4,
-      .dma_buf_len = 256,
-      .use_apll = false,
-      .tx_desc_auto_clear = false,
-      .fixed_mclk = 0,
+i2s_chan_handle_t s_rx = nullptr;
+
+bool initPdm() {
+  i2s_chan_config_t chanCfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+  if (i2s_new_channel(&chanCfg, nullptr, &s_rx) != ESP_OK) return false;
+
+  i2s_pdm_rx_config_t cfg = {
+      .clk_cfg = I2S_PDM_RX_CLK_DEFAULT_CONFIG(kSampleRate),
+      .slot_cfg = I2S_PDM_RX_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+                                                 I2S_SLOT_MODE_MONO),
+      .gpio_cfg =
+          {
+              .clk = (gpio_num_t)CUBE_MIC_CLK_PIN,
+              .din = (gpio_num_t)CUBE_MIC_DATA_PIN,
+              .invert_flags = {.clk_inv = false},
+          },
   };
-  if (i2s_driver_install(kPort, &cfg, 0, nullptr) != ESP_OK) return false;
-  const i2s_pin_config_t pins = {
-      .mck_io_num = I2S_PIN_NO_CHANGE,
-      .bck_io_num = I2S_PIN_NO_CHANGE,
-      .ws_io_num = CUBE_MIC_CLK_PIN,
-      .data_out_num = I2S_PIN_NO_CHANGE,
-      .data_in_num = CUBE_MIC_DATA_PIN,
-  };
-  return i2s_set_pin(kPort, &pins) == ESP_OK;
+  // Which PDM half-cycle the mic drives; runtime-switchable via /api/miccfg.
+  cfg.slot_cfg.slot_mask = s_channelLeft ? I2S_PDM_SLOT_LEFT : I2S_PDM_SLOT_RIGHT;
+
+  if (i2s_channel_init_pdm_rx_mode(s_rx, &cfg) != ESP_OK) return false;
+  return i2s_channel_enable(s_rx) == ESP_OK;
+}
+
+void teardownPdm() {
+  if (!s_rx) return;
+  i2s_channel_disable(s_rx);
+  i2s_del_channel(s_rx);
+  s_rx = nullptr;
 }
 
 void captureTask(void*) {
@@ -67,8 +73,23 @@ void captureTask(void*) {
   static ArduinoFFT<float> FFT(vReal, vImag, kSamples, (float)kSampleRate);
   vTaskDelay(pdMS_TO_TICKS(500));  // let WiFi/net bring-up settle first
   for (;;) {
+    // Reconfiguration happens here, in task context, so the channel is never
+    // deleted underneath a blocking read.
+    if (s_reconfigPending) {
+      s_reconfigPending = false;
+      teardownPdm();
+      if (!initPdm()) {
+        Serial.println("[mic] pdm reinit failed");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        continue;
+      }
+      Serial.printf("[mic] reconfigured: channel=%s squelch=%.0f\n",
+                    s_channelLeft ? "left" : "right", s_squelchRms);
+    }
     size_t bytesRead = 0;
-    i2s_read(kPort, raw, sizeof(raw), &bytesRead, portMAX_DELAY);
+    if (i2s_channel_read(s_rx, raw, sizeof(raw), &bytesRead, pdMS_TO_TICKS(500)) !=
+        ESP_OK)
+      continue;
     const int n = bytesRead / 2;
     if (n < kSamples) continue;
 
@@ -84,7 +105,17 @@ void captureTask(void*) {
       sumSq += v * v;
     }
     const float rms = sqrtf(sumSq / kSamples);
-    const bool silent = rms < kSquelchRms;
+    const bool silent = rms < s_squelchRms;
+    int16_t mn = raw[0], mx = raw[0];
+    for (int i = 1; i < kSamples; i++) {
+      if (raw[i] < mn) mn = raw[i];
+      if (raw[i] > mx) mx = raw[i];
+    }
+    s_stats.frames++;
+    s_stats.lastRms = rms;
+    s_stats.lastDc = mean;
+    s_stats.rawMin = mn;
+    s_stats.rawMax = mx;
 
     FFT.windowing(FFTWindow::Hamming, FFTDirection::Forward);
     FFT.compute(FFTDirection::Forward);
@@ -124,17 +155,13 @@ bool audioCaptureStart() {
   return false;
 #endif
   for (int b = 0; b < AUDIO_BANDS; b++) s_bandPeak[b] = 1.0f;
-  if (!initI2s()) {
-    Serial.println("[mic] i2s init failed");
+  if (!initPdm()) {
+    Serial.println("[mic] pdm init failed");
     return false;
   }
-#ifdef CUBE_MIC_BISECT_NO_TASK
-  Serial.println("[mic] BISECT: i2s installed, task NOT started");
-#else
   xTaskCreatePinnedToCore(captureTask, "mic", 8192, nullptr, 1, nullptr, 0);
-#endif
-  Serial.printf("[mic] pdm capture on data=%d clk=%d\n", CUBE_MIC_DATA_PIN,
-                CUBE_MIC_CLK_PIN);
+  Serial.printf("[mic] pdm capture on data=%d clk=%d (new i2s_pdm driver)\n",
+                CUBE_MIC_DATA_PIN, CUBE_MIC_CLK_PIN);
   return true;
 }
 
@@ -142,6 +169,20 @@ void audioCaptureRead(AudioFrame& out) {
   portENTER_CRITICAL(&s_mux);
   out = s_frame;
   portEXIT_CRITICAL(&s_mux);
+}
+
+void audioCaptureStats(AudioStats& out) {
+  portENTER_CRITICAL(&s_mux);
+  out = s_stats;
+  portEXIT_CRITICAL(&s_mux);
+}
+
+void audioCaptureReconfigure(bool channelLeft, float squelchRms) {
+  s_squelchRms = squelchRms;
+  if (channelLeft != s_channelLeft) {
+    s_channelLeft = channelLeft;
+    s_reconfigPending = true;  // applied by the capture task between reads
+  }
 }
 
 }  // namespace cube

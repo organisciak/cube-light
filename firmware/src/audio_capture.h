@@ -22,4 +22,17 @@ bool audioCaptureStart();
 /** Copy the most recent audio frame (level, bands, beat envelope). */
 void audioCaptureRead(AudioFrame& out);
 
+/** Diagnostics for /api/audio — enough to tell "no data" from "quiet". */
+struct AudioStats {
+  uint32_t frames;    // FFT frames processed since boot (~43/s when healthy)
+  float lastRms;      // raw-sample RMS of the latest frame (pre-squelch)
+  float lastDc;       // DC offset of the latest frame
+  int16_t rawMin, rawMax;  // sample extremes of the latest frame
+};
+void audioCaptureStats(AudioStats& out);
+
+/** Reinstall the I2S driver with a different channel format (left/right)
+ * and/or squelch. Runtime knobs for on-device mic bring-up. */
+void audioCaptureReconfigure(bool channelLeft, float squelchRms);
+
 }  // namespace cube

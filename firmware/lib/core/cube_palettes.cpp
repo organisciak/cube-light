@@ -89,6 +89,12 @@ const NamedGradient* findGradient(const char* name) {
 
 }  // namespace
 
+const char* const kPaletteNames[] = {
+    "none",     "fire",     "arctic",   "sunset",    "forest", "ocean",
+    "mono_red", "mono_blue", "rainbow", "spectrum",  "cyberpunk", "cycle",
+};
+const int kPaletteNameCount = sizeof(kPaletteNames) / sizeof(kPaletteNames[0]);
+
 bool paletteActive(const char* name) {
   if (!name || !name[0]) return false;
   if (std::strcmp(name, "none") == 0) return false;

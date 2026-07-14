@@ -38,6 +38,8 @@
 #include "audio_capture.h"
 #include "cube_calibration.h"
 #include "cube_pacman.h"
+#include "cube_palettes.h"
+#include "cube_param_specs.h"
 #include "cube_pattern.h"
 #include "cube_snake.h"
 #include "cube_power.h"
@@ -104,6 +106,11 @@ struct Settings {
   uint32_t supplyMA;  // 0 = limiter off
   Layout layout;      // wiring calibration
   String upAxis;      // "z+","z-","x+","x-","y+","y-"
+  int ledPin;         // output 1 GPIO
+  int ledPin2;        // output 2 GPIO; -1 = single unbroken chain
+  int ledSplit;       // LEDs on output 1 when split
+  bool micLeft;       // PDM channel format
+  float micSquelch;   // raw RMS below this = silence
 };
 
 Preferences prefs;
@@ -124,6 +131,23 @@ void loadSettings() {
   settings.layout.flipZ = prefs.getBool("flipz", false);
   settings.layout.ledOffset = prefs.getInt("ledoff", 0);
   settings.upAxis = prefs.getString("up", "z+");
+  // Default is a single unbroken 1000-LED chain on output 1; set pin2/split
+  // from the console once the chain is physically cut in half.
+  settings.ledPin = prefs.getInt("ledpin", CUBE_LED_PIN);
+  settings.ledPin2 = prefs.getInt("ledpin2", -1);
+  settings.ledSplit = prefs.getInt("ledsplit", CUBE_LED_SPLIT);
+  settings.micLeft = prefs.getBool("micleft", false);
+  settings.micSquelch = prefs.getFloat("micsq", 60.0f);
+  prefs.end();
+}
+
+void saveHardware() {
+  prefs.begin("cube", false);
+  prefs.putInt("ledpin", settings.ledPin);
+  prefs.putInt("ledpin2", settings.ledPin2);
+  prefs.putInt("ledsplit", settings.ledSplit);
+  prefs.putBool("micleft", settings.micLeft);
+  prefs.putFloat("micsq", settings.micSquelch);
   prefs.end();
 }
 
@@ -156,15 +180,37 @@ void saveSetting(const char* key, uint32_t v) {
 // ---- LED output ---------------------------------------------------------------
 
 // Feature fixed at RGB; configured color order is a runtime permutation
-// applied while copying into the strip. Two buses on separate RMT channels
-// transmit concurrently.
-#if CUBE_LED_PIN2 >= 0
-NeoPixelBus<NeoRgbFeature, NeoEsp32Rmt0Ws2811Method> strip(CUBE_LED_SPLIT, CUBE_LED_PIN);
-NeoPixelBus<NeoRgbFeature, NeoEsp32Rmt1Ws2811Method> strip2(NUM_LEDS - CUBE_LED_SPLIT,
-                                                            CUBE_LED_PIN2);
-#else
-NeoPixelBus<NeoRgbFeature, NeoEsp32Rmt0Ws2811Method> strip(NUM_LEDS, CUBE_LED_PIN);
-#endif
+// applied while copying into the strip. Pins and the single/dual split are
+// runtime settings: strips live on the heap and are torn down + rebuilt by
+// initStrips() when hardware config changes (NeoPixelBus releases its RMT
+// channel on destruction). Two buses transmit concurrently when split.
+using Strip1T = NeoPixelBus<NeoRgbFeature, NeoEsp32Rmt0Ws2811Method>;
+using Strip2T = NeoPixelBus<NeoRgbFeature, NeoEsp32Rmt1Ws2811Method>;
+Strip1T* strip1 = nullptr;
+Strip2T* strip2 = nullptr;
+int stripSplit = NUM_LEDS;  // LEDs on output 1
+
+void initStrips() {
+  delete strip1;
+  strip1 = nullptr;
+  delete strip2;
+  strip2 = nullptr;
+  const bool dual = settings.ledPin2 >= 0 && settings.ledSplit > 0 &&
+                    settings.ledSplit < NUM_LEDS;
+  stripSplit = dual ? settings.ledSplit : NUM_LEDS;
+  strip1 = new Strip1T(stripSplit, settings.ledPin);
+  strip1->Begin();
+  strip1->Show();
+  if (dual) {
+    strip2 = new Strip2T(NUM_LEDS - stripSplit, settings.ledPin2);
+    strip2->Begin();
+    strip2->Show();
+  }
+  Serial.printf("[led] pin1=%d n=%d%s\n", settings.ledPin, stripSplit,
+                dual ? (" pin2=" + String(settings.ledPin2) + " n=" +
+                        String(NUM_LEDS - stripSplit)).c_str()
+                     : " (single chain)");
+}
 
 uint8_t colorPerm[3] = {0, 1, 2};  // perm[wireSlot] = source channel (0=R 1=G 2=B)
 
@@ -175,10 +221,7 @@ void applyColorOrder(const String& order) {
 }
 
 void show(const uint8_t* rgb) {
-#ifdef CUBE_LED_BISECT_DISABLE
-  (void)rgb;
-  return;
-#endif
+  if (!strip1) return;
   const float limit = currentLimitScale(rgb, NUM_LEDS, CUBE_PER_LED_MA,
                                         CUBE_IDLE_MA_PER_LED, settings.supplyMA);
   const float k = limit * settings.brightness;
@@ -186,17 +229,11 @@ void show(const uint8_t* rgb) {
     const uint8_t* px = rgb + i * 3;
     const RgbColor c((uint8_t)(px[colorPerm[0]] * k), (uint8_t)(px[colorPerm[1]] * k),
                      (uint8_t)(px[colorPerm[2]] * k));
-#if CUBE_LED_PIN2 >= 0
-    if (i < CUBE_LED_SPLIT) strip.SetPixelColor(i, c);
-    else strip2.SetPixelColor(i - CUBE_LED_SPLIT, c);
-#else
-    strip.SetPixelColor(i, c);
-#endif
+    if (i < stripSplit) strip1->SetPixelColor(i, c);
+    else if (strip2) strip2->SetPixelColor(i - stripSplit, c);
   }
-  strip.Show();
-#if CUBE_LED_PIN2 >= 0
-  strip2.Show();
-#endif
+  strip1->Show();
+  if (strip2) strip2->Show();
 }
 
 // ---- pattern engine -----------------------------------------------------------
@@ -216,6 +253,69 @@ PatternCtx ctx{frame, &geo, 0, 0, &audio, &params};
 uint32_t patternStartMs = 0;
 float lastT = 0;
 
+// Effective (override-or-default) value of one spec, as a String.
+String effectiveParam(const ParamSpec& sp) {
+  switch (sp.type) {
+    case 1: return params.boolean(sp.key, sp.defNum != 0) ? "1" : "0";
+    case 2:
+    case 3:
+    case 4: return String(params.str(sp.key, sp.defStr));
+    default: return String(params.num(sp.key, sp.defNum), 3);
+  }
+}
+
+void applyParamFromString(const ParamSpec& sp, const String& v) {
+  switch (sp.type) {
+    case 1: params.setBool(sp.key, v == "1" || v == "true"); break;
+    case 2:
+    case 3:
+    case 4: params.setStr(sp.key, v.c_str()); break;
+    default: params.setNum(sp.key, v.toFloat()); break;
+  }
+}
+
+// Saved param overrides live in NVS as "key=value\n" blobs per pattern.
+void loadPatternParams(int idx) {
+  prefs.begin("cube", true);
+  const String blob = prefs.getString(("pp" + String(idx)).c_str(), "");
+  prefs.end();
+  if (blob.length() == 0) return;
+  const PatternSpecs* ps = specsFor(kPatterns[idx]->id);
+  if (!ps) return;
+  int pos = 0;
+  while (pos < (int)blob.length()) {
+    int nl = blob.indexOf('\n', pos);
+    if (nl < 0) nl = blob.length();
+    const String line = blob.substring(pos, nl);
+    const int eq = line.indexOf('=');
+    if (eq > 0) {
+      const String key = line.substring(0, eq);
+      for (int i = 0; i < ps->count; i++) {
+        if (key == ps->specs[i].key) {
+          applyParamFromString(ps->specs[i], line.substring(eq + 1));
+          break;
+        }
+      }
+    }
+    pos = nl + 1;
+  }
+}
+
+void savePatternParams(int idx) {
+  const PatternSpecs* ps = specsFor(kPatterns[idx]->id);
+  if (!ps) return;
+  String blob;
+  for (int i = 0; i < ps->count; i++) {
+    blob += ps->specs[i].key;
+    blob += '=';
+    blob += effectiveParam(ps->specs[i]);
+    blob += '\n';
+  }
+  prefs.begin("cube", false);
+  prefs.putString(("pp" + String(idx)).c_str(), blob);
+  prefs.end();
+}
+
 void setPatternByIndex(int i) {
   activePatternIdx = ((i % kPatternCount) + kPatternCount) % kPatternCount;
   activePattern = kPatterns[activePatternIdx];
@@ -224,6 +324,7 @@ void setPatternByIndex(int i) {
   ctx.t = 0;
   ctx.dt = 0;
   params.clear();
+  loadPatternParams(activePatternIdx);
   if (activePattern->init) activePattern->init(ctx);
   settings.patternId = activePattern->id;
   saveSetting("pattern", settings.patternId);
@@ -426,6 +527,8 @@ void handleStatus() {
   json += ",\"fps\":" + String(CUBE_FPS);
   json += ",\"uptimeS\":" + String(millis() / 1000);
   json += ",\"up\":\"" + settings.upAxis + "\"";
+  json += ",\"ledPin\":" + String(settings.ledPin) + ",\"ledPin2\":" + String(settings.ledPin2) +
+          ",\"ledSplit\":" + String(settings.ledSplit);
   json += ",\"layout\":{\"flipX\":" + String(settings.layout.flipX ? "true" : "false") +
           ",\"flipY\":" + String(settings.layout.flipY ? "true" : "false") +
           ",\"flipZ\":" + String(settings.layout.flipZ ? "true" : "false") +
@@ -451,6 +554,7 @@ void startNetServices() {
   udp.begin(kRealtimePort);
   setupWebServer();
   audioCaptureStart();
+  audioCaptureReconfigure(settings.micLeft, settings.micSquelch);
   Serial.println("[net] services up (mdns/ota/udp/http/mic)");
 }
 
@@ -530,6 +634,86 @@ void setupWebServer() {
     if (!authed()) return;
     server.send(200, "application/json",
                 "{\"state\":\"" + wifiTestResult + "\",\"ip\":\"" + wifiTestIp + "\"}");
+  });
+  // Param specs + current values for a pattern (default: the active one).
+  server.on("/api/params", HTTP_GET, []() {
+    if (!authed()) return;
+    String id = server.hasArg("id") ? server.arg("id") : settings.patternId;
+    const PatternSpecs* ps = specsFor(id.c_str());
+    if (!ps) {
+      server.send(404, "application/json", "{\"error\":\"unknown pattern\"}");
+      return;
+    }
+    const bool isActive = id == settings.patternId;
+    String json = "{\"id\":\"" + id + "\",\"active\":" + (isActive ? "true" : "false") +
+                  ",\"palettes\":[";
+    for (int i = 0; i < kPaletteNameCount; i++) {
+      if (i) json += ',';
+      json += '"';
+      json += kPaletteNames[i];
+      json += '"';
+    }
+    json += "],\"specs\":[";
+    for (int i = 0; i < ps->count; i++) {
+      const ParamSpec& sp = ps->specs[i];
+      if (i) json += ',';
+      json += "{\"key\":\"" + String(sp.key) + "\",\"label\":\"" + String(sp.label) +
+              "\",\"type\":" + String(sp.type) + ",\"min\":" + String(sp.minV, 3) +
+              ",\"max\":" + String(sp.maxV, 3) + ",\"step\":" + String(sp.stepV, 3) +
+              ",\"options\":\"" + String(sp.options) + "\",\"value\":\"" +
+              (isActive ? effectiveParam(sp)
+                        : (sp.type == 0 ? String(sp.defNum, 3)
+                           : sp.type == 1 ? String(sp.defNum != 0 ? "1" : "0")
+                                          : String(sp.defStr))) +
+              "\"}";
+    }
+    json += "]}";
+    server.send(200, "application/json", json);
+  });
+  // Persist the active pattern's current params as its power-on defaults.
+  server.on("/api/params/save", HTTP_POST, []() {
+    if (!authed()) return;
+    savePatternParams(activePatternIdx);
+    server.send(200, "text/plain", "ok");
+  });
+  // Runtime LED hardware config: pins + single/dual split. Applies live
+  // (strips are rebuilt) and persists.
+  server.on("/api/ledcfg", HTTP_POST, []() {
+    if (!authed()) return;
+    settings.ledPin = server.arg("pin").toInt();
+    settings.ledPin2 = server.hasArg("pin2") ? server.arg("pin2").toInt() : -1;
+    settings.ledSplit = server.hasArg("split") ? server.arg("split").toInt() : NUM_LEDS;
+    saveHardware();
+    initStrips();
+    server.send(200, "text/plain", "ok");
+  });
+  // Mic diagnostics: live frame + raw capture stats.
+  server.on("/api/audio", HTTP_GET, []() {
+    if (!authed()) return;
+    AudioFrame af;
+    audioCaptureRead(af);
+    AudioStats st;
+    audioCaptureStats(st);
+    String json = "{\"level\":" + String(af.level, 3) + ",\"beat\":" + String(af.beat, 3) +
+                  ",\"bands\":[";
+    for (int i = 0; i < AUDIO_BANDS; i++) {
+      if (i) json += ',';
+      json += String(af.bands[i], 3);
+    }
+    json += "],\"frames\":" + String(st.frames) + ",\"rms\":" + String(st.lastRms, 1) +
+            ",\"dc\":" + String(st.lastDc, 1) + ",\"rawMin\":" + String(st.rawMin) +
+            ",\"rawMax\":" + String(st.rawMax) +
+            ",\"channel\":\"" + String(settings.micLeft ? "left" : "right") + "\"" +
+            ",\"squelch\":" + String(settings.micSquelch, 1) + "}";
+    server.send(200, "application/json", json);
+  });
+  server.on("/api/miccfg", HTTP_POST, []() {
+    if (!authed()) return;
+    if (server.hasArg("ch")) settings.micLeft = server.arg("ch") == "left";
+    if (server.hasArg("squelch")) settings.micSquelch = server.arg("squelch").toFloat();
+    saveHardware();
+    audioCaptureReconfigure(settings.micLeft, settings.micSquelch);
+    server.send(200, "text/plain", "ok");
   });
   server.on("/api/up", HTTP_POST, []() {
     if (!authed()) return;
@@ -659,14 +843,7 @@ void setup() {
   pinMode(CUBE_RELAY_PIN, OUTPUT);
   digitalWrite(CUBE_RELAY_PIN, HIGH);  // power the LED string
 #endif
-#ifndef CUBE_LED_BISECT_DISABLE
-  strip.Begin();
-  strip.Show();  // all off
-#endif
-#if CUBE_LED_PIN2 >= 0 && !defined(CUBE_LED_BISECT_DISABLE)
-  strip2.Begin();
-  strip2.Show();
-#endif
+  initStrips();
 
   // Non-blocking: netTick() in loop() drives join/fallback, so patterns
   // start immediately and the AP always comes back if the network is lost.
