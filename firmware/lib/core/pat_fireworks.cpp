@@ -1,8 +1,8 @@
 // Port of src/shared/patterns/fireworks.ts. Rocket/particle vectors become
 // fixed pools: 8 rockets, 320 particles (default burst is 70 particles with
 // ~1.8s max life and a 1.6s launch interval -> ~300 live typical; overflow
-// just drops extra spawns). Pool sized with ESP32 DRAM in mind — the static
-// segment is ~160KB shared with the WiFi stack, so don't get greedy here.
+// just drops extra spawns). Kept modest for ESP32 DRAM (shared with the
+// WiFi stack and every pattern's static state).
 #include <cmath>
 #include <cstring>
 
@@ -36,7 +36,7 @@ struct Particle {
 };
 
 constexpr int kMaxRockets = 8;
-constexpr int kMaxParticles = 320;
+constexpr int kMaxParticles = 224;
 
 Rocket s_rockets[kMaxRockets];
 int s_rocketCount = 0;

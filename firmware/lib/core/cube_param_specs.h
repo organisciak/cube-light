@@ -118,6 +118,38 @@ static const ParamSpec kSpecs_spin_cube[] = {
     {"b", "B (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
     {"cornerBoost", "Corner brightness", 0, 1.0f, 2.0f, 0.05f, 1.35f, "", ""},
 };
+static const ParamSpec kSpecs_bounce[] = {
+    {"radius", "Radius (voxels)", 0, 1.5f, 4.5f, 0.1f, 2.6f, "", ""},
+    {"speed", "Bounce speed (voxels/s)", 0, 1.0f, 14.0f, 0.5f, 5.0f, "", ""},
+    {"rings", "Latitude rings", 0, 1.0f, 5.0f, 1.0f, 3.0f, "", ""},
+    {"meridians", "Meridians", 0, 0.0f, 6.0f, 1.0f, 4.0f, "", ""},
+    {"spinSpeed", "Tumble (rev/s)", 0, 0.0f, 1.0f, 0.02f, 0.15f, "", ""},
+    {"beatPulse", "Beat → size pulse", 0, 0.0f, 2.0f, 0.05f, 0.5f, "", ""},
+    {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "ocean", ""},
+    {"r", "R (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 120.0f, "", ""},
+    {"g", "G (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 220.0f, "", ""},
+    {"b", "B (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
+};
+static const ParamSpec kSpecs_orbit[] = {
+    {"count", "Particle count", 0, 1.0f, 6.0f, 1.0f, 4.0f, "", ""},
+    {"radius", "Orbit radius (voxels)", 0, 1.5f, 4.5f, 0.1f, 3.4f, "", ""},
+    {"speed", "Orbit speed (rev/s)", 0, 0.05f, 2.0f, 0.05f, 0.4f, "", ""},
+    {"trail", "Trail length", 0, 0.0f, 14.0f, 1.0f, 10.0f, "", ""},
+    {"precess", "Precession (rev/s)", 0, 0.0f, 0.5f, 0.01f, 0.05f, "", ""},
+    {"beatSpeed", "Beat → speed", 0, 0.0f, 4.0f, 0.1f, 1.5f, "", ""},
+    {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "spectrum", ""},
+    {"headBright", "Head brightness", 0, 0.3f, 1.0f, 0.05f, 1.0f, "", ""},
+};
+static const ParamSpec kSpecs_scan[] = {
+    {"axis", "Sweep axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "z", "z,y,x"},
+    {"speed", "Sweep speed (slices/s)", 0, 2.0f, 40.0f, 1.0f, 11.0f, "", ""},
+    {"fade", "Slice fade time (s)", 0, 0.1f, 2.0f, 0.05f, 0.55f, "", ""},
+    {"gridOnly", "Grid lines only (sparser)", 1, 0.0f, 0.0f, 0.0f, 0.0f, "", ""},
+    {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "arctic", ""},
+    {"colorBySlice", "Color follows slice", 1, 0.0f, 0.0f, 0.0f, 1.0f, "", ""},
+    {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.05f, 0.85f, "", ""},
+    {"levelGain", "Level → speed", 0, 0.0f, 4.0f, 0.1f, 1.0f, "", ""},
+};
 static const ParamSpec kSpecs_cloud[] = {
     {"threshold", "Density threshold", 0, -0.4f, 0.6f, 0.02f, 0.0f, "", ""},
     {"scale", "Cloud scale", 0, 0.1f, 1.2f, 0.02f, 0.5f, "", ""},
@@ -251,6 +283,9 @@ static const PatternSpecs kPatternSpecs[] = {
     {"bar-eq", kSpecs_bar_eq, 9},
     {"spiral", kSpecs_spiral, 9},
     {"spin-cube", kSpecs_spin_cube, 10},
+    {"bounce", kSpecs_bounce, 10},
+    {"orbit", kSpecs_orbit, 8},
+    {"scan", kSpecs_scan, 8},
     {"cloud", kSpecs_cloud, 12},
     {"comet", kSpecs_comet, 9},
     {"text-3d", kSpecs_text_3d, 17},
@@ -263,7 +298,7 @@ static const PatternSpecs kPatternSpecs[] = {
     {"index-walk", kSpecs_index_walk, 2},
     {"lit-pixel", kSpecs_lit_pixel, 4},
 };
-static const int kPatternSpecsCount = 19;
+static const int kPatternSpecsCount = 22;
 
 inline const PatternSpecs* specsFor(const char* id) {
   for (int i = 0; i < kPatternSpecsCount; i++) {

@@ -18,6 +18,9 @@ import { fireworks } from './fireworks';
 import { barEq } from './barEq';
 import { spiral } from './spiral';
 import { spinCube } from './spinCube';
+import { bounce } from './bounce';
+import { orbit } from './orbit';
+import { scan } from './scan';
 
 export const patterns: Record<string, Pattern> = {
   [wavySheet.meta.id]: wavySheet,
@@ -28,6 +31,9 @@ export const patterns: Record<string, Pattern> = {
   [barEq.meta.id]: barEq,
   [spiral.meta.id]: spiral,
   [spinCube.meta.id]: spinCube,
+  [bounce.meta.id]: bounce,
+  [orbit.meta.id]: orbit,
+  [scan.meta.id]: scan,
   [cloud.meta.id]: cloud,
   [comet.meta.id]: comet,
   [text3d.meta.id]: text3d,
