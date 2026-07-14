@@ -322,7 +322,7 @@ void render(PatternCtx& ctx) {
   uint8_t* buffer = ctx.buffer;
   const float t = ctx.t;
 
-  const bool autoMode = p.str("mode", "manual")[0] == 'a';
+  const bool autoMode = p.str("mode", "auto")[0] == 'a';
   const float nearMiss = clamp01(p.num("nearMiss", 0.0f));
   const float baseSpeed = p.num("baseSpeed", 4.0f);
   const float maxSpeed = p.num("maxSpeed", 12.0f);

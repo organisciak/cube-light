@@ -49,8 +49,8 @@ static const ParamSpec kSpecs_rain[] = {
 static const ParamSpec kSpecs_rotating_planes[] = {
     {"speed", "Rotation speed", 0, 0.0f, 2.0f, 0.01f, 0.3f, "", ""},
     {"sweepSpeed", "Sweep speed", 0, 0.0f, 2.0f, 0.01f, 0.4f, "", ""},
-    {"thickness", "Plane thickness", 0, 0.4f, 4.0f, 0.1f, 1.0f, "", ""},
-    {"planes", "Plane count", 0, 1.0f, 4.0f, 1.0f, 2.0f, "", ""},
+    {"thickness", "Plane thickness", 0, 0.4f, 4.0f, 0.1f, 0.7f, "", ""},
+    {"planes", "Plane count", 0, 1.0f, 4.0f, 1.0f, 1.0f, "", ""},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", ""},
     {"r", "R (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 80.0f, "", ""},
     {"g", "G (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 200.0f, "", ""},
@@ -94,6 +94,29 @@ static const ParamSpec kSpecs_bar_eq[] = {
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "spectrum", ""},
     {"colorBy", "Color by", 2, 0.0f, 0.0f, 0.0f, 0.0f, "bar", "bar,height,band"},
     {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.05f, 0.9f, "", ""},
+};
+static const ParamSpec kSpecs_spiral[] = {
+    {"axis", "Layer axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "z", "z,y,x"},
+    {"speed", "Draw speed (cells/s)", 0, 2.0f, 60.0f, 1.0f, 18.0f, "", ""},
+    {"layerDelay", "Layer phase delay (s)", 0, 0.0f, 1.0f, 0.02f, 0.14f, "", ""},
+    {"twist", "Quarter-turns across height", 0, 0.0f, 4.0f, 1.0f, 1.0f, "", ""},
+    {"tailDim", "Oldest-cell brightness", 0, 0.1f, 1.0f, 0.05f, 0.45f, "", ""},
+    {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "cyberpunk", ""},
+    {"colorBy", "Color by", 2, 0.0f, 0.0f, 0.0f, 0.0f, "position", "position,layer"},
+    {"levelGain", "Level → speed", 0, 0.0f, 4.0f, 0.1f, 1.0f, "", ""},
+    {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.05f, 0.9f, "", ""},
+};
+static const ParamSpec kSpecs_spin_cube[] = {
+    {"size", "Cube size (voxels)", 0, 2.0f, 9.0f, 0.25f, 5.5f, "", ""},
+    {"speedA", "Tumble speed A (rev/s)", 0, 0.0f, 0.6f, 0.01f, 0.09f, "", ""},
+    {"speedB", "Tumble speed B (rev/s)", 0, 0.0f, 0.6f, 0.01f, 0.06f, "", ""},
+    {"breathe", "Size breathing", 0, 0.0f, 0.5f, 0.02f, 0.12f, "", ""},
+    {"beatKick", "Beat → spin kick", 0, 0.0f, 6.0f, 0.1f, 2.0f, "", ""},
+    {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", ""},
+    {"r", "R (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 240.0f, "", ""},
+    {"g", "G (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 240.0f, "", ""},
+    {"b", "B (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
+    {"cornerBoost", "Corner brightness", 0, 1.0f, 2.0f, 0.05f, 1.35f, "", ""},
 };
 static const ParamSpec kSpecs_cloud[] = {
     {"threshold", "Density threshold", 0, -0.4f, 0.6f, 0.02f, 0.0f, "", ""},
@@ -156,7 +179,7 @@ static const ParamSpec kSpecs_life_3d[] = {
     {"fadeAge", "Cell fade-in age", 0, 1.0f, 30.0f, 1.0f, 6.0f, "", ""},
 };
 static const ParamSpec kSpecs_snake_3d[] = {
-    {"mode", "Mode", 2, 0.0f, 0.0f, 0.0f, 0.0f, "manual", "manual,auto"},
+    {"mode", "Mode", 2, 0.0f, 0.0f, 0.0f, 0.0f, "auto", "auto,manual"},
     {"nearMiss", "Auto: near-miss chance", 0, 0.0f, 1.0f, 0.05f, 0.0f, "", ""},
     {"baseSpeed", "Start speed (Hz)", 0, 1.0f, 12.0f, 0.5f, 1.0f, "", ""},
     {"maxSpeed", "Max speed (Hz)", 0, 4.0f, 25.0f, 0.5f, 12.0f, "", ""},
@@ -226,6 +249,8 @@ static const PatternSpecs kPatternSpecs[] = {
     {"audio-ripple", kSpecs_audio_ripple, 8},
     {"spectrum-discs", kSpecs_spectrum_discs, 11},
     {"bar-eq", kSpecs_bar_eq, 9},
+    {"spiral", kSpecs_spiral, 9},
+    {"spin-cube", kSpecs_spin_cube, 10},
     {"cloud", kSpecs_cloud, 12},
     {"comet", kSpecs_comet, 9},
     {"text-3d", kSpecs_text_3d, 17},
@@ -238,7 +263,7 @@ static const PatternSpecs kPatternSpecs[] = {
     {"index-walk", kSpecs_index_walk, 2},
     {"lit-pixel", kSpecs_lit_pixel, 4},
 };
-static const int kPatternSpecsCount = 17;
+static const int kPatternSpecsCount = 19;
 
 inline const PatternSpecs* specsFor(const char* id) {
   for (int i = 0; i < kPatternSpecsCount; i++) {

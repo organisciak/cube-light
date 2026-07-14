@@ -830,9 +830,11 @@ void setupWebServer() {
       return;
     }
     if (settings.patternId == "snake-3d") {
+      params.setStr("mode", "manual");  // grabbing the pad takes over from auto
       queueSnakeInput((SnakeDir)d);
       server.send(200, "text/plain", "ok");
     } else if (settings.patternId == "pacman-3d") {
+      params.setStr("mode", "manual");
       queuePacmanInput((SnakeDir)d);
       server.send(200, "text/plain", "ok");
     } else {

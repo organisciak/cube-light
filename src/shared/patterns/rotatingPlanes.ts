@@ -24,8 +24,8 @@ export const rotatingPlanes: Pattern = {
     params: [
       { key: 'speed', label: 'Rotation speed', type: 'number', min: 0, max: 2, step: 0.01, default: 0.3 },
       { key: 'sweepSpeed', label: 'Sweep speed', type: 'number', min: 0, max: 2, step: 0.01, default: 0.4 },
-      { key: 'thickness', label: 'Plane thickness', type: 'number', min: 0.4, max: 4, step: 0.1, default: 1 },
-      { key: 'planes', label: 'Plane count', type: 'number', min: 1, max: 4, step: 1, default: 2 },
+      { key: 'thickness', label: 'Plane thickness', type: 'number', min: 0.4, max: 4, step: 0.1, default: 0.7 },
+      { key: 'planes', label: 'Plane count', type: 'number', min: 1, max: 4, step: 1, default: 1 },
       { key: 'palette', label: 'Palette', type: 'palette', default: 'none' },
       { key: 'r', label: 'R (RGB mode)', type: 'number', min: 0, max: 255, step: 1, default: 80 },
       { key: 'g', label: 'G (RGB mode)', type: 'number', min: 0, max: 255, step: 1, default: 200 },
@@ -51,7 +51,7 @@ export const rotatingPlanes: Pattern = {
     const N = CUBE_N;
     const baseSpeed = num(params.speed, 0.3);
     const baseSweepSpeed = num(params.sweepSpeed, 0.4);
-    const baseThickness = Math.max(0.1, num(params.thickness, 1));
+    const baseThickness = Math.max(0.1, num(params.thickness, 0.7));
     const audioGain = num(params.audioGain, 1.5);
     const levelSpeedGain = num(params.levelSpeedGain, 1.5);
     const beatSpeedGain = num(params.beatSpeedGain, 2.0);
@@ -60,7 +60,7 @@ export const rotatingPlanes: Pattern = {
     const level = clamp01(audio.level);
     const beat = audio.beat ?? 0;
     const thickness = baseThickness * (1 + level * audioGain);
-    const planeCount = Math.max(1, Math.floor(num(params.planes, 2)));
+    const planeCount = Math.max(1, Math.floor(num(params.planes, 1)));
     const cr = num(params.r, 80);
     const cg = num(params.g, 200);
     const cb = num(params.b, 255);

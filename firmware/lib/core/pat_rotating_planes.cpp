@@ -35,7 +35,7 @@ void render(PatternCtx& ctx) {
   const int N = CUBE_N;
   const float baseSpeed = p.num("speed", 0.3f);
   const float baseSweepSpeed = p.num("sweepSpeed", 0.4f);
-  const float baseThickness = std::fmax(0.1f, p.num("thickness", 1.0f));
+  const float baseThickness = std::fmax(0.1f, p.num("thickness", 0.7f));
   const float audioGain = p.num("audioGain", 1.5f);
   const float levelSpeedGain = p.num("levelSpeedGain", 1.5f);
   const float beatSpeedGain = p.num("beatSpeedGain", 2.0f);
@@ -44,7 +44,7 @@ void render(PatternCtx& ctx) {
   const float level = clamp01(audio.level);
   const float beat = audio.beat;
   const float thickness = baseThickness * (1.0f + level * audioGain);
-  const int planeCount = (int)std::fmax(1.0f, std::floor(p.num("planes", 2.0f)));
+  const int planeCount = (int)std::fmax(1.0f, std::floor(p.num("planes", 1.0f)));
   const float cr = p.num("r", 80.0f);
   const float cg = p.num("g", 200.0f);
   const float cb = p.num("b", 255.0f);

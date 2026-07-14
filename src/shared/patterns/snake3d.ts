@@ -134,7 +134,7 @@ export const snake3d: Pattern = {
     name: '3D Snake',
     description: 'Arrow keys / A D = x, ↑ ↓ = y, W S = z. Auto mode runs a CPU solver.',
     params: [
-      { key: 'mode', label: 'Mode', type: 'enum', options: ['manual', 'auto'], default: 'manual' },
+      { key: 'mode', label: 'Mode', type: 'enum', options: ['auto', 'manual'], default: 'auto' },
       { key: 'nearMiss', label: 'Auto: near-miss chance', type: 'number', min: 0, max: 1, step: 0.05, default: 0 },
       { key: 'baseSpeed', label: 'Start speed (Hz)', type: 'number', min: 1, max: 12, step: 0.5, default: 1 },
       { key: 'maxSpeed', label: 'Max speed (Hz)', type: 'number', min: 4, max: 25, step: 0.5, default: 12 },
@@ -157,7 +157,7 @@ export const snake3d: Pattern = {
     if (!game) reset(0);
     if (!game) return;
     const { buffer, idx, t, params } = ctx;
-    const mode = String(params.mode ?? 'manual') as 'manual' | 'auto';
+    const mode = String(params.mode ?? 'auto') as 'manual' | 'auto';
     const nearMiss = Math.max(0, Math.min(1, num(params.nearMiss, 0)));
     const baseSpeed = num(params.baseSpeed, 4);
     const maxSpeed = num(params.maxSpeed, 12);

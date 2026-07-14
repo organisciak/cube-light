@@ -22,6 +22,8 @@ extern const Pattern kFireworks;
 extern const Pattern kSnake3d;
 extern const Pattern kPacman3d;
 extern const Pattern kBarEq;
+extern const Pattern kSpiral;
+extern const Pattern kSpinCube;
 
 const Pattern* const kPatterns[] = {
     &kWavySheet,
@@ -33,6 +35,8 @@ const Pattern* const kPatterns[] = {
     &kAudioRipple,
     &kSpectrumDiscs,
     &kBarEq,
+    &kSpiral,
+    &kSpinCube,
     &kLife3d,
     &kText3d,
     &kFireworks,
