@@ -277,9 +277,14 @@ void applyParamFromString(const ParamSpec& sp, const String& v) {
 }
 
 // Saved param overrides live in NVS as "key=value\n" blobs per pattern.
+String paramsKeyFor(int idx) {
+  // NVS keys cap at 15 chars; ids are unique within their first 13.
+  return "pp" + String(kPatterns[idx]->id).substring(0, 13);
+}
+
 void loadPatternParams(int idx) {
   prefs.begin("cube", true);
-  const String blob = prefs.getString(("pp" + String(idx)).c_str(), "");
+  const String blob = prefs.getString(paramsKeyFor(idx).c_str(), "");
   prefs.end();
   if (blob.length() == 0) return;
   const PatternSpecs* ps = specsFor(kPatterns[idx]->id);
@@ -314,7 +319,7 @@ void savePatternParams(int idx) {
     blob += '\n';
   }
   prefs.begin("cube", false);
-  prefs.putString(("pp" + String(idx)).c_str(), blob);
+  prefs.putString(paramsKeyFor(idx).c_str(), blob);
   prefs.end();
 }
 
@@ -530,6 +535,7 @@ void handleStatus() {
   json += ",\"fps\":" + String(CUBE_FPS);
   json += ",\"uptimeS\":" + String(millis() / 1000);
   json += ",\"micOn\":" + String(settings.micEnabled ? "true" : "false");
+  json += ",\"live\":" + String(millis() < liveUntilMs ? "true" : "false");
   json += ",\"up\":\"" + settings.upAxis + "\"";
   json += ",\"ledPin\":" + String(settings.ledPin) + ",\"ledPin2\":" + String(settings.ledPin2) +
           ",\"ledSplit\":" + String(settings.ledSplit);
@@ -696,7 +702,7 @@ void setupWebServer() {
   server.on("/api/params/factory", HTTP_POST, []() {
     if (!authed()) return;
     prefs.begin("cube", false);
-    prefs.remove(("pp" + String(activePatternIdx)).c_str());
+    prefs.remove(paramsKeyFor(activePatternIdx).c_str());
     prefs.end();
     params.clear();
     if (activePattern->init) activePattern->init(ctx);
@@ -809,6 +815,10 @@ void setupWebServer() {
   server.on("/calibrate", HTTP_GET, []() {
     if (!authed()) return;
     server.send(200, "text/html", kCalibrateHtml);
+  });
+  server.on("/leds", HTTP_GET, []() {
+    if (!authed()) return;
+    server.send(200, "text/html", kLedsHtml);
   });
   // Game pad: intentionally NOT auth-gated so guests can play snake/pacman
   // without the console password. Input queueing is harmless.

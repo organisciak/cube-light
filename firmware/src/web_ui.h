@@ -32,15 +32,19 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
   button{padding:8px 12px;border-radius:6px;border:none;background:#26262e;color:#ccc;font-size:13px;cursor:pointer}
   button.pri{background:#2a5aa5;color:#fff}
 </style></head><body>
-<nav><b>Console</b><a href="/calibrate">Calibrate</a><a href="/snake">Game pad</a><a href="/wifi">WiFi</a></nav>
+<nav><b>Console</b><a href="/leds">LEDs</a><a href="/calibrate">Calibrate</a><a href="/snake">Game pad</a><a href="/wifi">WiFi</a></nav>
 <h1>cube-light</h1>
+<div id="liveBanner" style="display:none;background:#5a3a10;border:1px solid #a06820;color:#f0c070;border-radius:6px;padding:10px;font-size:13px;margin-bottom:12px">
+⚠ An external stream (dev server?) is driving the cube right now — the
+pattern below won't show until it stops.</div>
 <label>Pattern</label>
 <select id="pattern"></select>
-<label>Mic reactivity</label>
-<button id="micToggle" style="width:100%;padding:10px;font-size:15px"></button>
 <label>Brightness</label>
 <div class="row"><input type="range" id="bright" min="0" max="100" step="1"><output id="brightv"></output></div>
 
+
+<label>Mic reactivity</label>
+<button id="micToggle" style="width:100%;padding:10px;font-size:15px"></button>
 
 <details open id="paramsBox"><summary>Pattern parameters</summary>
 <div id="params"></div>
@@ -72,16 +76,6 @@ network state. When a console password is set (WiFi page), they ask for it
 <div class="prow"><button class="pri" id="micApply">Apply mic config</button></div>
 </details>
 
-<details><summary>LED outputs 🔒</summary>
-<p style="font-size:12px;color:#888">Single chain: set output 2 pin to -1.
-Split chain: output 1 drives LEDs 0..split-1, output 2 the rest (feed the
-second half at its original start, same wire direction).</p>
-<div class="prow"><label>Output 1 GPIO</label><input type="number" id="lPin" style="flex:1"></div>
-<div class="prow"><label>Output 2 GPIO (-1 off)</label><input type="number" id="lPin2" style="flex:1"></div>
-<div class="prow"><label>Split (LEDs on output 1)</label><input type="number" id="lSplit" style="flex:1" min="1" max="999"></div>
-<div class="prow"><button class="pri" id="ledApply">Apply LED config</button></div>
-</details>
-
 <div class="stat" id="stat"></div>
 <script>
 const $=id=>document.getElementById(id);
@@ -93,8 +87,8 @@ async function refresh(){
   sel.value=s.pattern;
   $('bright').value=Math.round(s.brightness*100);$('brightv').textContent=$('bright').value+'%';
   $('supply').value=s.supplyMA; $('order').value=s.colorOrder; $('up').value=s.up;
-  $('lPin').value=s.ledPin; $('lPin2').value=s.ledPin2; $('lSplit').value=s.ledSplit;
   micOn=s.micOn; drawMic();
+  $('liveBanner').style.display=s.live?'block':'none';
   $('stat').textContent=`ip ${s.ip} · rssi ${s.rssi}dBm · ${s.fps}fps target · v${s.version}`;
   loadParams();
 }
@@ -141,7 +135,6 @@ $('saveParams').onclick=async()=>{await post('/api/params/save');$('saveParams')
 $('resetParams').onclick=async()=>{await post('/api/params/reset');loadParams()};
 $('factoryParams').onclick=async()=>{await post('/api/params/factory');loadParams()};
 $('micApply').onclick=()=>post(`/api/miccfg?ch=${$('micCh').value}&squelch=${$('micSq').value}`);
-$('ledApply').onclick=()=>post(`/api/ledcfg?pin=${$('lPin').value}&pin2=${$('lPin2').value}&split=${$('lSplit').value}`);
 let micInit=false;
 setInterval(async()=>{
   try{
@@ -188,7 +181,7 @@ const char kWifiHtml[] = R"HTML(<!doctype html>
   nav a{color:#7ab0ff;text-decoration:none}
   nav b{color:#eee}
 </style></head><body>
-<nav><a href="/">Console</a><a href="/calibrate">Calibrate</a><a href="/snake">Game pad</a><b>WiFi</b></nav>
+<nav><a href="/">Console</a><a href="/leds">LEDs</a><a href="/calibrate">Calibrate</a><a href="/snake">Game pad</a><b>WiFi</b></nav>
 <h1>WiFi &amp; security</h1>
 
 <h2>Join a network</h2>
@@ -325,7 +318,7 @@ const char kCalibrateHtml[] = R"HTML(<!doctype html>
   nav a{color:#7ab0ff;text-decoration:none}
   nav b{color:#eee}
 </style></head><body>
-<nav><a href="/">Console</a><b>Calibrate</b><a href="/snake">Game pad</a><a href="/wifi">WiFi</a></nav>
+<nav><a href="/">Console</a><a href="/leds">LEDs</a><b>Calibrate</b><a href="/snake">Game pad</a><a href="/wifi">WiFi</a></nav>
 <h1>Wiring calibration</h1>
 <p>1&#41; <b>Start</b> switches the cube to single-pixel mode. 2&#41; Light an
 LED, find it on the cube, and record its (x,y,z) — pick an origin corner
@@ -391,5 +384,45 @@ $('apply').onclick=async()=>{
   await post(`/api/layout?fx=${solved.fx}&fy=${solved.fy}&fz=${solved.fz}&off=${solved.off}`);
   $('result').className='ok';
   $('result').textContent='Layout applied and saved. Pick a pattern on the console to admire your correctly-mapped cube.';
+};
+</script></body></html>)HTML";
+
+// LED hardware page: output pins + chain split, applied live.
+const char kLedsHtml[] = R"HTML(<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cube LEDs</title>
+<style>
+  body{font-family:system-ui;background:#0d0d10;color:#ddd;margin:0;padding:24px;max-width:420px;margin:auto}
+  h1{font-size:18px;margin:12px 0 8px}
+  p{font-size:13px;color:#999;line-height:1.5;margin:6px 0}
+  label{display:block;margin:14px 0 4px;font-size:13px;color:#999}
+  input{width:100%;box-sizing:border-box;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:8px;font-size:15px}
+  button{margin-top:18px;width:100%;padding:10px;border-radius:6px;border:none;background:#2a5aa5;color:#fff;font-size:15px;cursor:pointer}
+  nav{display:flex;gap:14px;font-size:13px;margin-bottom:14px}
+  nav a{color:#7ab0ff;text-decoration:none}
+  nav b{color:#eee}
+  #msg{font-size:13px;margin-top:10px;min-height:18px;color:#6fd66f}
+</style></head><body>
+<nav><a href="/">Console</a><b>LEDs</b><a href="/calibrate">Calibrate</a><a href="/snake">Game pad</a><a href="/wifi">WiFi</a></nav>
+<h1>LED outputs</h1>
+<p><b>Single chain:</b> set output 2 pin to -1 — output 1 drives all 1000
+LEDs.<br><b>Split chain:</b> output 1 drives LEDs 0..split&minus;1, output 2
+the rest. Feed the second half at its original start, same wire direction,
+so calibration stays valid. This board's terminals: GPIO 16, 12, 4, 2, 13.</p>
+<label>Output 1 GPIO</label><input type="number" id="lPin">
+<label>Output 2 GPIO (-1 = single chain)</label><input type="number" id="lPin2">
+<label>Split (LEDs on output 1)</label><input type="number" id="lSplit" min="1" max="999">
+<button id="apply">Apply (live) &amp; save</button>
+<div id="msg"></div>
+<script>
+const $=id=>document.getElementById(id);
+(async()=>{
+  const s=await (await fetch('/api/status')).json();
+  $('lPin').value=s.ledPin;$('lPin2').value=s.ledPin2;$('lSplit').value=s.ledSplit;
+})();
+$('apply').onclick=async()=>{
+  await fetch(`/api/ledcfg?pin=${$('lPin').value}&pin2=${$('lPin2').value}&split=${$('lSplit').value}`,{method:'POST'});
+  $('msg').textContent='Applied — outputs rebuilt without a reboot.';
 };
 </script></body></html>)HTML";
