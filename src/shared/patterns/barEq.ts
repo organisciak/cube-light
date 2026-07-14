@@ -32,7 +32,7 @@ export const barEq: Pattern = {
       { key: 'beatBoost', label: 'Beat boost', type: 'number', min: 0, max: 1, step: 0.05, default: 0.2 },
       { key: 'baseHeight', label: 'Idle bar height', type: 'number', min: 0, max: 3, step: 0.1, default: 0.6 },
       { key: 'palette', label: 'Palette', type: 'palette', default: 'spectrum' },
-      { key: 'colorBy', label: 'Color by', type: 'enum', options: ['height', 'band'], default: 'height' },
+      { key: 'colorBy', label: 'Color by', type: 'enum', options: ['bar', 'height', 'band'], default: 'bar' },
       { key: 'sat', label: 'Saturation (HSV mode)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.9 },
     ],
   },
@@ -49,7 +49,7 @@ export const barEq: Pattern = {
     const beatBoost = clamp01(num(params.beatBoost, 0.2));
     const baseHeight = num(params.baseHeight, 0.6);
     const sat = num(params.sat, 0.9);
-    const colorByBand = String(params.colorBy ?? 'height') === 'band';
+    const colorBy = String(params.colorBy ?? 'bar');
     const paletteName = String(params.palette ?? 'spectrum');
     const useP = isPaletteActive(paletteName);
     const palette = getPalette(paletteName);
@@ -77,11 +77,14 @@ export const barEq: Pattern = {
         // Bar height in voxels; idle bars keep a dim base so the floor reads.
         const height = baseHeight + shaped * (N - baseHeight);
 
+        // 'bar' mode: one solid color per column, scrambled across the
+        // palette so adjacent bars contrast instead of blending.
+        const barT = ((bi * 7) % (BARS * BARS)) / (BARS * BARS - 1);
         for (let z = 0; z < N; z++) {
           // Antialiased top: full below, fractional coverage at the crest.
           const cover = clamp01(height - z);
           if (cover <= 0.02) break;
-          const t01 = colorByBand ? bandPos : z / (N - 1);
+          const t01 = colorBy === 'band' ? bandPos : colorBy === 'bar' ? barT : z / (N - 1);
           let r: number, g: number, b: number;
           if (useP) {
             [r, g, b] = palette(t01);

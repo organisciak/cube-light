@@ -38,18 +38,30 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
 <select id="pattern"></select>
 <label>Brightness</label>
 <div class="row"><input type="range" id="bright" min="0" max="100" step="1"><output id="brightv"></output></div>
+
+
+<details open id="paramsBox"><summary>Pattern parameters</summary>
+<div id="params"></div>
+<div class="prow">
+  <button id="resetParams">Reset to defaults</button>
+  <button class="pri" id="saveParams">Save as power-on defaults 🔒</button>
+  <button id="factoryParams">Factory reset 🔒</button>
+</div>
+</details>
+
+<details><summary>Admin 🔒</summary>
+<p style="font-size:12px;color:#888">These change hardware, persistence, or
+network state. When a console password is set (WiFi page), they ask for it
+(username <b>cube</b>); everything above stays open for guests.</p>
+<label>Which way is up</label>
+<select id="up"><option value="z+">Z+ (default)</option><option value="z-">Z&minus;</option><option value="x+">X+</option><option value="x-">X&minus;</option><option value="y+">Y+</option><option value="y-">Y&minus;</option></select>
 <label>Power budget (mA, 0 = no limit)</label>
 <input type="number" id="supply" min="0" step="100">
 <label>Color order</label>
 <select id="order"><option>RGB</option><option>GRB</option><option>BRG</option><option>RBG</option><option>GBR</option><option>BGR</option></select>
-<label>Which way is up</label>
-<select id="up"><option value="z+">Z+ (default)</option><option value="z-">Z&minus;</option><option value="x+">X+</option><option value="x-">X&minus;</option><option value="y+">Y+</option><option value="y-">Y&minus;</option></select>
-<details open id="paramsBox"><summary>Pattern parameters</summary>
-<div id="params"></div>
-<div class="prow"><button class="pri" id="saveParams">Save as power-on defaults</button></div>
 </details>
 
-<details><summary>Microphone</summary>
+<details><summary>Microphone 🔒</summary>
 <div class="prow"><label>Level</label><div class="meter"><div id="mLevel"></div></div><output id="mLevelV"></output></div>
 <div class="prow"><label>Beat</label><div class="meter"><div id="mBeat"></div></div></div>
 <div class="prow"><label>Raw RMS / frames</label><output id="mRaw" style="min-width:160px;text-align:left"></output></div>
@@ -58,7 +70,7 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
 <div class="prow"><button class="pri" id="micApply">Apply mic config</button></div>
 </details>
 
-<details><summary>LED outputs</summary>
+<details><summary>LED outputs 🔒</summary>
 <p style="font-size:12px;color:#888">Single chain: set output 2 pin to -1.
 Split chain: output 1 drives LEDs 0..split-1, output 2 the rest (feed the
 second half at its original start, same wire direction).</p>
@@ -114,7 +126,9 @@ async function loadParams(){
     box.appendChild(row);
   }
 }
-$('saveParams').onclick=async()=>{await post('/api/params/save');$('saveParams').textContent='Saved ✓';setTimeout(()=>$('saveParams').textContent='Save as power-on defaults',1500)};
+$('saveParams').onclick=async()=>{await post('/api/params/save');$('saveParams').textContent='Saved ✓';setTimeout(()=>$('saveParams').textContent='Save as power-on defaults 🔒',1500)};
+$('resetParams').onclick=async()=>{await post('/api/params/reset');loadParams()};
+$('factoryParams').onclick=async()=>{await post('/api/params/factory');loadParams()};
 $('micApply').onclick=()=>post(`/api/miccfg?ch=${$('micCh').value}&squelch=${$('micSq').value}`);
 $('ledApply').onclick=()=>post(`/api/ledcfg?pin=${$('lPin').value}&pin2=${$('lPin2').value}&split=${$('lSplit').value}`);
 let micInit=false;

@@ -33,7 +33,8 @@ void render(PatternCtx& ctx) {
   const float beatBoost = clamp01(p.num("beatBoost", 0.2f));
   const float baseHeight = p.num("baseHeight", 0.6f);
   const float sat = p.num("sat", 0.9f);
-  const bool colorByBand = p.str("colorBy", "height")[0] == 'b';
+  const char colorBy = p.str("colorBy", "bar")[0];  // 'b'ar | 'h'eight | ba'n'd
+  const char colorBy2 = p.str("colorBy", "bar")[2];  // disambiguate bar/band
   const char* paletteName = p.str("palette", "spectrum");
   const bool useP = paletteActive(paletteName);
   const PaletteRef pal = resolvePalette(paletteName);
@@ -62,11 +63,16 @@ void render(PatternCtx& ctx) {
       // Bar height in voxels; idle bars keep a dim base so the floor reads.
       const float height = baseHeight + shaped * (N - baseHeight);
 
+      // 'bar' mode: one solid color per column, scrambled across the palette
+      // so adjacent bars contrast instead of blending.
+      const float barT = (float)((bi * 7) % (kBars * kBars)) / (kBars * kBars - 1);
       for (int z = 0; z < N; z++) {
         // Antialiased top: full below, fractional coverage at the crest.
         const float cover = clamp01(height - z);
         if (cover <= 0.02f) break;
-        const float t01 = colorByBand ? bandPos : (float)z / (N - 1);
+        const float t01 = (colorBy == 'b' && colorBy2 == 'n') ? bandPos
+                          : colorBy == 'b' ? barT
+                                           : (float)z / (N - 1);
         uint8_t rgb[3];
         if (useP) {
           samplePalette(pal, t01, ctx.t, rgb);

@@ -36,16 +36,6 @@ static const ParamSpec kSpecs_wavy_sheet[] = {
     {"g", "G (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 220.0f, "", ""},
     {"b", "B (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
 };
-static const ParamSpec kSpecs_plasma[] = {
-    {"speed", "Speed", 0, 0.0f, 4.0f, 0.05f, 0.6f, "", ""},
-    {"scale", "Spatial scale", 0, 1.0f, 30.0f, 0.5f, 6.0f, "", ""},
-    {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "rainbow", ""},
-    {"hueShift", "Palette shift", 0, 0.0f, 1.0f, 0.01f, 0.0f, "", ""},
-    {"hueRange", "Palette range", 0, 0.0f, 2.0f, 0.01f, 0.6f, "", ""},
-    {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.01f, 1.0f, "", ""},
-    {"bright", "Brightness", 0, 0.0f, 1.0f, 0.01f, 0.6f, "", ""},
-    {"audioGain", "Audio brightness gain", 0, 0.0f, 3.0f, 0.05f, 0.6f, "", ""},
-};
 static const ParamSpec kSpecs_rain[] = {
     {"spawnRate", "Spawn rate (drops/s)", 0, 0.0f, 80.0f, 1.0f, 14.0f, "", ""},
     {"fallSpeed", "Fall speed (z/s)", 0, 1.0f, 30.0f, 0.5f, 9.0f, "", ""},
@@ -102,7 +92,7 @@ static const ParamSpec kSpecs_bar_eq[] = {
     {"beatBoost", "Beat boost", 0, 0.0f, 1.0f, 0.05f, 0.2f, "", ""},
     {"baseHeight", "Idle bar height", 0, 0.0f, 3.0f, 0.1f, 0.6f, "", ""},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "spectrum", ""},
-    {"colorBy", "Color by", 2, 0.0f, 0.0f, 0.0f, 0.0f, "height", "height,band"},
+    {"colorBy", "Color by", 2, 0.0f, 0.0f, 0.0f, 0.0f, "bar", "bar,height,band"},
     {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.05f, 0.9f, "", ""},
 };
 static const ParamSpec kSpecs_cloud[] = {
@@ -118,18 +108,6 @@ static const ParamSpec kSpecs_cloud[] = {
     {"spinKick", "Beat spin kick (rad/s)", 0, 0.0f, 6.0f, 0.1f, 1.4f, "", ""},
     {"spinDamp", "Spin damping", 0, 0.2f, 6.0f, 0.1f, 1.2f, "", ""},
     {"beatThreshold", "Beat trigger threshold", 0, 0.1f, 1.0f, 0.05f, 0.5f, "", ""},
-};
-static const ParamSpec kSpecs_day_cycle[] = {
-    {"upAxis", "Up axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "z", "x,y,z"},
-    {"mode", "Mode", 2, 0.0f, 0.0f, 0.0f, 0.0f, "auto", "auto,manual"},
-    {"time", "Time of day (manual)", 0, 0.0f, 1.0f, 0.005f, 0.5f, "", ""},
-    {"cycleSec", "Cycle length (s, auto)", 0, 10.0f, 600.0f, 1.0f, 60.0f, "", ""},
-    {"peak", "Hill peak height", 0, 1.0f, 8.0f, 1.0f, 4.0f, "", ""},
-    {"hillR", "Hill R (noon)", 0, 0.0f, 255.0f, 1.0f, 50.0f, "", ""},
-    {"hillG", "Hill G (noon)", 0, 0.0f, 255.0f, 1.0f, 200.0f, "", ""},
-    {"hillB", "Hill B (noon)", 0, 0.0f, 255.0f, 1.0f, 70.0f, "", ""},
-    {"sunSize", "Sun glow size", 0, 0.5f, 8.0f, 0.1f, 2.5f, "", ""},
-    {"moonBright", "Moonlight strength", 0, 0.0f, 1.0f, 0.05f, 0.5f, "", ""},
 };
 static const ParamSpec kSpecs_comet[] = {
     {"speed", "Base speed (voxels/s)", 0, 1.0f, 30.0f, 0.5f, 8.0f, "", ""},
@@ -243,14 +221,12 @@ struct PatternSpecs {
 
 static const PatternSpecs kPatternSpecs[] = {
     {"wavy-sheet", kSpecs_wavy_sheet, 19},
-    {"plasma", kSpecs_plasma, 8},
     {"rain", kSpecs_rain, 8},
     {"rotating-planes", kSpecs_rotating_planes, 13},
     {"audio-ripple", kSpecs_audio_ripple, 8},
     {"spectrum-discs", kSpecs_spectrum_discs, 11},
     {"bar-eq", kSpecs_bar_eq, 9},
     {"cloud", kSpecs_cloud, 12},
-    {"day-cycle", kSpecs_day_cycle, 10},
     {"comet", kSpecs_comet, 9},
     {"text-3d", kSpecs_text_3d, 17},
     {"fire", kSpecs_fire, 7},
@@ -262,7 +238,7 @@ static const PatternSpecs kPatternSpecs[] = {
     {"index-walk", kSpecs_index_walk, 2},
     {"lit-pixel", kSpecs_lit_pixel, 4},
 };
-static const int kPatternSpecsCount = 19;
+static const int kPatternSpecsCount = 17;
 
 inline const PatternSpecs* specsFor(const char* id) {
   for (int i = 0; i < kPatternSpecsCount; i++) {

@@ -498,9 +498,10 @@ void netTick() {
 
 WebServer server(80);
 
-// Optional console password (HTTP Basic auth, username "cube"). Applied to
-// everything the server exposes — view pages included, since the pattern
-// controls are on them.
+// Optional console password (HTTP Basic auth, username "cube"). Gates the
+// ADMIN tier only: hardware, network, calibration, and anything persistent.
+// The guest tier (pattern picking, live params, brightness, game pad) stays
+// open so the cube can be handed to a crowd.
 bool authed() {
   if (settings.uiPass.length() == 0) return true;
   if (server.authenticate("cube", settings.uiPass.c_str())) return true;
@@ -560,20 +561,16 @@ void startNetServices() {
 
 void setupWebServer() {
   server.on("/", HTTP_GET, []() {
-    if (!authed()) return;
     server.send(200, "text/html", kIndexHtml);
   });
   server.on("/api/status", HTTP_GET, []() {
-    if (!authed()) return;
     handleStatus();
   });
   server.on("/api/pattern", HTTP_POST, []() {
-    if (!authed()) return;
     setPatternById(server.arg("id"));
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/brightness", HTTP_POST, []() {
-    if (!authed()) return;
     settings.brightness = constrain(server.arg("v").toFloat(), 0.0f, 1.0f);
     saveSetting("bright", settings.brightness);
     server.send(200, "text/plain", "ok");
@@ -637,7 +634,6 @@ void setupWebServer() {
   });
   // Param specs + current values for a pattern (default: the active one).
   server.on("/api/params", HTTP_GET, []() {
-    if (!authed()) return;
     String id = server.hasArg("id") ? server.arg("id") : settings.patternId;
     const PatternSpecs* ps = specsFor(id.c_str());
     if (!ps) {
@@ -676,6 +672,24 @@ void setupWebServer() {
     savePatternParams(activePatternIdx);
     server.send(200, "text/plain", "ok");
   });
+  // Guest-tier reset: discard live tweaks, back to the saved power-on
+  // defaults (the "un-mess" button).
+  server.on("/api/params/reset", HTTP_POST, []() {
+    params.clear();
+    loadPatternParams(activePatternIdx);
+    if (activePattern->init) activePattern->init(ctx);
+    server.send(200, "text/plain", "ok");
+  });
+  // Admin-tier factory reset: also delete the saved defaults.
+  server.on("/api/params/factory", HTTP_POST, []() {
+    if (!authed()) return;
+    prefs.begin("cube", false);
+    prefs.remove(("pp" + String(activePatternIdx)).c_str());
+    prefs.end();
+    params.clear();
+    if (activePattern->init) activePattern->init(ctx);
+    server.send(200, "text/plain", "ok");
+  });
   // Runtime LED hardware config: pins + single/dual split. Applies live
   // (strips are rebuilt) and persists.
   server.on("/api/ledcfg", HTTP_POST, []() {
@@ -689,7 +703,6 @@ void setupWebServer() {
   });
   // Mic diagnostics: live frame + raw capture stats.
   server.on("/api/audio", HTTP_GET, []() {
-    if (!authed()) return;
     AudioFrame af;
     audioCaptureRead(af);
     AudioStats st;
@@ -735,7 +748,6 @@ void setupWebServer() {
   // Set a live pattern parameter (not persisted). Used by the calibration
   // page to steer lit-pixel, and handy for tweaking any pattern.
   server.on("/api/param", HTTP_POST, []() {
-    if (!authed()) return;
     const String key = server.arg("key");
     const String v = server.arg("v");
     const String type = server.arg("type");

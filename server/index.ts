@@ -203,7 +203,6 @@ function pacingSnapshot() {
 
 const DEFAULT_CYCLE_LIST = [
   'wavy-sheet',
-  'plasma',
   'rain',
   'rotating-planes',
   'audio-ripple',

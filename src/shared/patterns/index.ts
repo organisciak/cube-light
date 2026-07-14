@@ -3,13 +3,11 @@ import { wavySheet } from './wavySheet';
 import { solid } from './solid';
 import { indexWalk } from './indexWalk';
 import { litPixel } from './litPixel';
-import { plasma } from './plasma';
 import { rain } from './rain';
 import { rotatingPlanes } from './rotatingPlanes';
 import { audioRipple } from './audioRipple';
 import { spectrumDiscs } from './spectrumDiscs';
 import { cloud } from './cloud';
-import { dayCycle } from './dayCycle';
 import { comet } from './comet';
 import { text3d } from './text3d';
 import { fire } from './fire';
@@ -21,14 +19,12 @@ import { barEq } from './barEq';
 
 export const patterns: Record<string, Pattern> = {
   [wavySheet.meta.id]: wavySheet,
-  [plasma.meta.id]: plasma,
   [rain.meta.id]: rain,
   [rotatingPlanes.meta.id]: rotatingPlanes,
   [audioRipple.meta.id]: audioRipple,
   [spectrumDiscs.meta.id]: spectrumDiscs,
   [barEq.meta.id]: barEq,
   [cloud.meta.id]: cloud,
-  [dayCycle.meta.id]: dayCycle,
   [comet.meta.id]: comet,
   [text3d.meta.id]: text3d,
   [fire.meta.id]: fire,

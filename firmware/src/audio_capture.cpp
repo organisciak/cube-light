@@ -30,8 +30,13 @@ AudioFrame s_frame;
 BeatDetector s_beat;
 
 float s_bandPeak[AUDIO_BANDS];
+float s_bandFloor[AUDIO_BANDS];  // per-band running noise floor
+float s_bandOut[AUDIO_BANDS];    // attack/release-smoothed outputs
 float s_levelPeak = 0.01f;
+float s_levelOut = 0;
 constexpr float kPeakDecay = 0.9995f;  // per FFT frame (~43Hz)
+constexpr float kAttack = 0.55f;   // per-frame smoothing when rising
+constexpr float kRelease = 0.10f;  // per-frame smoothing when falling
 float s_squelchRms = 60.0f;
 bool s_channelLeft = false;
 volatile bool s_reconfigPending = false;
@@ -105,7 +110,12 @@ void captureTask(void*) {
       sumSq += v * v;
     }
     const float rms = sqrtf(sumSq / kSamples);
-    const bool silent = rms < s_squelchRms;
+    // Soft-knee squelch: full gate below squelch/2, fully open at squelch.
+    // The old hard gate snapped level/bands to zero the instant RMS dipped
+    // under the threshold — visible as stutter in audio-reactive patterns.
+    const float knee = 0.5f * s_squelchRms;
+    const float gate =
+        knee <= 0 ? 1.0f : min(1.0f, max(0.0f, (rms - knee) / (knee + 1e-3f)));
     int16_t mn = raw[0], mx = raw[0];
     for (int i = 1; i < kSamples; i++) {
       if (raw[i] < mn) mn = raw[i];
@@ -123,25 +133,37 @@ void captureTask(void*) {
 
     // 8 log-spaced bands: bins [2^b, 2^(b+1)) starting at bin 1
     // (~43-86Hz for band 0 ... ~5.5-11kHz for band 7).
-    float bands[AUDIO_BANDS];
+    float bassTarget = 0;
     for (int b = 0; b < AUDIO_BANDS; b++) {
       const int lo = 1 << b;
       const int hi = min(kSamples / 2, 1 << (b + 1));
       float acc = 0;
       for (int i = lo; i < hi; i++) acc += vReal[i];
       const float mag = acc / (hi - lo);
-      s_bandPeak[b] = max(mag, max(s_bandPeak[b] * kPeakDecay, 1.0f));
-      bands[b] = silent ? 0.0f : min(1.0f, mag / s_bandPeak[b]);
+      // Per-band noise floor (snaps down, creeps up) subtracted before
+      // normalizing against the per-band peak. Without this, every band
+      // rides the same overall loudness envelope and the spectrum reads as
+      // one mass instead of independent bars.
+      s_bandFloor[b] = mag < s_bandFloor[b] ? mag : s_bandFloor[b] * 1.002f + 0.05f;
+      s_bandPeak[b] = max(mag, max(s_bandPeak[b] * kPeakDecay, s_bandFloor[b] + 1.0f));
+      const float norm = min(
+          1.0f, max(0.0f, (mag - s_bandFloor[b]) /
+                              (s_bandPeak[b] - s_bandFloor[b] + 1e-3f)));
+      const float target = norm * gate;
+      if (b == 0) bassTarget = target;
+      s_bandOut[b] += (target - s_bandOut[b]) * (target > s_bandOut[b] ? kAttack : kRelease);
     }
     s_levelPeak = max(rms, s_levelPeak * kPeakDecay);
-    const float level = silent ? 0.0f : min(1.0f, rms / s_levelPeak);
+    const float levelTarget = min(1.0f, rms / s_levelPeak) * gate;
+    s_levelOut += (levelTarget - s_levelOut) * (levelTarget > s_levelOut ? kAttack : kRelease);
 
-    s_beat.onFrame(bands[0], millis());
+    // Beat detection wants the sharp pre-smoothing transient.
+    s_beat.onFrame(bassTarget, millis());
     s_beat.decay((float)kSamples / kSampleRate);
 
     portENTER_CRITICAL(&s_mux);
-    s_frame.level = level;
-    for (int b = 0; b < AUDIO_BANDS; b++) s_frame.bands[b] = bands[b];
+    s_frame.level = s_levelOut;
+    for (int b = 0; b < AUDIO_BANDS; b++) s_frame.bands[b] = s_bandOut[b];
     s_frame.beat = s_beat.envelope();
     portEXIT_CRITICAL(&s_mux);
   }
@@ -154,7 +176,11 @@ bool audioCaptureStart() {
   Serial.println("[mic] BISECT: mic fully disabled");
   return false;
 #endif
-  for (int b = 0; b < AUDIO_BANDS; b++) s_bandPeak[b] = 1.0f;
+  for (int b = 0; b < AUDIO_BANDS; b++) {
+    s_bandPeak[b] = 1.0f;
+    s_bandFloor[b] = 1e9f;  // first frame snaps it to reality
+    s_bandOut[b] = 0;
+  }
   if (!initPdm()) {
     Serial.println("[mic] pdm init failed");
     return false;
