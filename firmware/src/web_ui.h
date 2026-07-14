@@ -36,6 +36,8 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
 <h1>cube-light</h1>
 <label>Pattern</label>
 <select id="pattern"></select>
+<label>Mic reactivity</label>
+<button id="micToggle" style="width:100%;padding:10px;font-size:15px"></button>
 <label>Brightness</label>
 <div class="row"><input type="range" id="bright" min="0" max="100" step="1"><output id="brightv"></output></div>
 
@@ -92,9 +94,18 @@ async function refresh(){
   $('bright').value=Math.round(s.brightness*100);$('brightv').textContent=$('bright').value+'%';
   $('supply').value=s.supplyMA; $('order').value=s.colorOrder; $('up').value=s.up;
   $('lPin').value=s.ledPin; $('lPin2').value=s.ledPin2; $('lSplit').value=s.ledSplit;
+  micOn=s.micOn; drawMic();
   $('stat').textContent=`ip ${s.ip} · rssi ${s.rssi}dBm · ${s.fps}fps target · v${s.version}`;
   loadParams();
 }
+let micOn=true;
+function drawMic(){
+  const b=$('micToggle');
+  b.textContent=micOn?'🎤 ON — sound drives the patterns':'🔇 OFF — patterns ignore sound';
+  b.style.background=micOn?'#2a5aa5':'#26262e';
+  b.style.color=micOn?'#fff':'#999';
+}
+$('micToggle').onclick=async()=>{micOn=!micOn;drawMic();await post('/api/mic?on='+(micOn?1:0))};
 const T={NUM:0,BOOL:1,ENUM:2,PAL:3,STR:4};
 async function loadParams(){
   const d=await (await fetch('/api/params')).json();

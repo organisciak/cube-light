@@ -111,6 +111,7 @@ struct Settings {
   int ledSplit;       // LEDs on output 1 when split
   bool micLeft;       // PDM channel format
   float micSquelch;   // raw RMS below this = silence
+  bool micEnabled;    // master toggle: false = patterns see silence
 };
 
 Preferences prefs;
@@ -138,6 +139,7 @@ void loadSettings() {
   settings.ledSplit = prefs.getInt("ledsplit", CUBE_LED_SPLIT);
   settings.micLeft = prefs.getBool("micleft", false);
   settings.micSquelch = prefs.getFloat("micsq", 60.0f);
+  settings.micEnabled = prefs.getBool("micen", true);
   prefs.end();
 }
 
@@ -527,6 +529,7 @@ void handleStatus() {
   json += ",\"rssi\":" + String(WiFi.RSSI());
   json += ",\"fps\":" + String(CUBE_FPS);
   json += ",\"uptimeS\":" + String(millis() / 1000);
+  json += ",\"micOn\":" + String(settings.micEnabled ? "true" : "false");
   json += ",\"up\":\"" + settings.upAxis + "\"";
   json += ",\"ledPin\":" + String(settings.ledPin) + ",\"ledPin2\":" + String(settings.ledPin2) +
           ",\"ledSplit\":" + String(settings.ledSplit);
@@ -670,6 +673,15 @@ void setupWebServer() {
   server.on("/api/params/save", HTTP_POST, []() {
     if (!authed()) return;
     savePatternParams(activePatternIdx);
+    server.send(200, "text/plain", "ok");
+  });
+  // Guest-tier master toggle for audio reactivity: off = patterns see
+  // silence (capture keeps running so the meter still works for admins).
+  server.on("/api/mic", HTTP_POST, []() {
+    settings.micEnabled = server.arg("on") != "0";
+    prefs.begin("cube", false);
+    prefs.putBool("micen", settings.micEnabled);
+    prefs.end();
     server.send(200, "text/plain", "ok");
   });
   // Guest-tier reset: discard live tweaks, back to the saved power-on
@@ -891,7 +903,11 @@ void loop() {
     return;
   }
 
-  audioCaptureRead(audio);
+  if (settings.micEnabled) {
+    audioCaptureRead(audio);
+  } else {
+    audio = AudioFrame{};  // reactivity off: patterns see silence
+  }
   const float t = (now - patternStartMs) / 1000.0f;
   ctx.t = t;
   ctx.dt = t - lastT;
