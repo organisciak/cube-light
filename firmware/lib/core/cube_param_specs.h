@@ -268,16 +268,16 @@ static const ParamSpec kSpecs_lit_pixel[] = {
     {"b", "B", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
 };
 static const ParamSpec kSpecs_build_map[] = {
-    {"period", "Strand length (LEDs)", 0, 2.0f, 100.0f, 1.0f, 10.0f, "", ""},
+    {"mode", "Mode", 2, 0.0f, 0.0f, 0.0f, 0.0f, "axis", "axis,strand"},
+    {"axis", "Axis (axis mode)", 2, 0.0f, 0.0f, 0.0f, 0.0f, "x", "x,y,z"},
+    {"period", "Strand length (strand mode)", 0, 2.0f, 100.0f, 1.0f, 10.0f, "", ""},
+    {"showCenter", "Mark the two middle", 1, 0.0f, 0.0f, 0.0f, 1.0f, "", ""},
     {"endR", "End R", 0, 0.0f, 255.0f, 1.0f, 0.0f, "", ""},
     {"endG", "End G", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
     {"endB", "End B", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
-    {"dimDir", "Dim 2nd LED (show direction)", 1, 0.0f, 0.0f, 0.0f, 1.0f, "", ""},
-    {"showCenter", "Mark strand centers", 1, 0.0f, 0.0f, 0.0f, 1.0f, "", ""},
-    {"centerOffset", "Center offset in strand", 0, 0.0f, 99.0f, 1.0f, 5.0f, "", ""},
-    {"ctrR", "Center R", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
-    {"ctrG", "Center G", 0, 0.0f, 255.0f, 1.0f, 90.0f, "", ""},
-    {"ctrB", "Center B", 0, 0.0f, 255.0f, 1.0f, 0.0f, "", ""},
+    {"ctrR", "Middle R", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
+    {"ctrG", "Middle G", 0, 0.0f, 255.0f, 1.0f, 90.0f, "", ""},
+    {"ctrB", "Middle B", 0, 0.0f, 255.0f, 1.0f, 0.0f, "", ""},
 };
 
 struct PatternSpecs {

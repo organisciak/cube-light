@@ -304,7 +304,8 @@ const char kCalibrateHtml[] = R"HTML(<!doctype html>
   h1{font-size:18px;margin:12px 0 8px}
   p{font-size:13px;color:#999;line-height:1.5;margin:6px 0}
   label{display:block;margin:12px 0 4px;font-size:13px;color:#999}
-  input,textarea{box-sizing:border-box;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:8px;font-size:15px}
+  input,textarea,select{box-sizing:border-box;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:8px;font-size:15px}
+  select{width:100%}
   textarea{width:100%;height:130px;font-family:ui-monospace,monospace;font-size:13px}
   .row{display:flex;gap:8px;align-items:end}
   .row div{flex:1}
@@ -345,17 +346,19 @@ the layout when it&rsquo;s unique.</p>
 
 <hr style="border-color:#26262e;margin:24px 0">
 <h1>Assembly map</h1>
-<p>For the <b>physical build</b> &mdash; no calibration needed, this lights LEDs
-by raw wire index. <span style="color:#4de0e0">Cyan</span> marks the <b>start of
-every strand</b> (with a dim tail showing wire direction);
-<span style="color:#e0a24d">amber</span> marks each strand <b>center</b>. Use it
-to line strands up as you thread them into the grid.</p>
+<p>A <b>physical build</b> aid. <span style="color:#4de0e0">Cyan</span> marks the
+two ends, <span style="color:#e0a24d">amber</span> the two middle.</p>
+<p><b>Axis</b> uses the calibrated layout to light the far faces of an axis (the
+actual cube faces). <b>Strand</b> ignores calibration and marks each strand&rsquo;s
+ends by raw wire index (0, 9/10, 19/20&hellip;) &mdash; use it while threading.</p>
 <div class="row">
-  <div><label>Strand length (LEDs)</label><input id="period" type="number" min="2" max="100" value="10"></div>
-  <button id="buildStart">Show map</button>
+  <div><label>Mode</label><select id="mode"><option value="axis">Axis (faces)</option><option value="strand">Strand (wire)</option></select></div>
+  <div><label>Axis</label><select id="axis"><option>x</option><option>y</option><option>z</option></select></div>
+  <div><label>Strand length</label><input id="period" type="number" min="2" max="100" value="10"></div>
 </div>
 <label style="display:flex;gap:8px;align-items:center;margin-top:12px">
-  <input id="centers" type="checkbox" checked style="width:auto"> Mark strand centers</label>
+  <input id="centers" type="checkbox" checked style="width:auto"> Mark the two middle</label>
+<div style="margin-top:14px"><button id="buildStart">Show map</button></div>
 
 <p><a href="/">&larr; back to console</a></p>
 <script>
@@ -400,11 +403,18 @@ $('apply').onclick=async()=>{
   $('result').className='ok';
   $('result').textContent='Layout applied and saved. Pick a pattern on the console to admire your correctly-mapped cube.';
 };
-const setPeriod=()=>post('/api/param?key=period&v='+(+$('period').value||10));
-const setCenters=()=>post('/api/param?key=showCenter&type=bool&v='+($('centers').checked?'1':'0'));
-$('buildStart').onclick=async()=>{await post('/api/pattern?id=build-map');await setPeriod();await setCenters()};
-$('period').addEventListener('change',setPeriod);
-$('centers').addEventListener('change',setCenters);
+const sp=(k,v,t)=>post('/api/param?key='+k+'&v='+v+(t?'&type='+t:''));
+const setMode=()=>sp('mode',$('mode').value,'str');
+const setAxis=()=>sp('axis',$('axis').value,'str');
+const setPeriod=()=>sp('period',(+$('period').value||10));
+const setCenters=()=>sp('showCenter',$('centers').checked?'1':'0','bool');
+$('buildStart').onclick=async()=>{
+  await post('/api/pattern?id=build-map');
+  await setMode();await setAxis();await setPeriod();await setCenters();
+};
+['mode','axis','period','centers'].forEach(id=>$(id).addEventListener('change',()=>{
+  ({mode:setMode,axis:setAxis,period:setPeriod,centers:setCenters})[id]();
+}));
 </script></body></html>)HTML";
 
 // LED hardware page: output pins + chain split, applied live.
