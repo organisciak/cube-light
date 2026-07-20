@@ -18,6 +18,7 @@ extern const Pattern kLife3d;
 extern const Pattern kText3d;
 extern const Pattern kIndexWalk;
 extern const Pattern kLitPixel;
+extern const Pattern kBuildMap;
 extern const Pattern kFireworks;
 extern const Pattern kSnake3d;
 extern const Pattern kPacman3d;
@@ -51,6 +52,7 @@ const Pattern* const kPatterns[] = {
     &kSolid,
     &kIndexWalk,
     &kLitPixel,
+    &kBuildMap,
 };
 const int kPatternCount = sizeof(kPatterns) / sizeof(kPatterns[0]);
 const char* const kDefaultPatternId = "wavy-sheet";

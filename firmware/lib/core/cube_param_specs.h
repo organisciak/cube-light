@@ -267,6 +267,18 @@ static const ParamSpec kSpecs_lit_pixel[] = {
     {"g", "G", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
     {"b", "B", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
 };
+static const ParamSpec kSpecs_build_map[] = {
+    {"period", "Strand length (LEDs)", 0, 2.0f, 100.0f, 1.0f, 10.0f, "", ""},
+    {"endR", "End R", 0, 0.0f, 255.0f, 1.0f, 0.0f, "", ""},
+    {"endG", "End G", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
+    {"endB", "End B", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
+    {"dimDir", "Dim 2nd LED (show direction)", 1, 0.0f, 0.0f, 0.0f, 1.0f, "", ""},
+    {"showCenter", "Mark strand centers", 1, 0.0f, 0.0f, 0.0f, 1.0f, "", ""},
+    {"centerOffset", "Center offset in strand", 0, 0.0f, 99.0f, 1.0f, 5.0f, "", ""},
+    {"ctrR", "Center R", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", ""},
+    {"ctrG", "Center G", 0, 0.0f, 255.0f, 1.0f, 90.0f, "", ""},
+    {"ctrB", "Center B", 0, 0.0f, 255.0f, 1.0f, 0.0f, "", ""},
+};
 
 struct PatternSpecs {
   const char* id;
@@ -297,8 +309,9 @@ static const PatternSpecs kPatternSpecs[] = {
     {"solid", kSpecs_solid, 3},
     {"index-walk", kSpecs_index_walk, 2},
     {"lit-pixel", kSpecs_lit_pixel, 4},
+    {"build-map", kSpecs_build_map, 10},
 };
-static const int kPatternSpecsCount = 22;
+static const int kPatternSpecsCount = 23;
 
 inline const PatternSpecs* specsFor(const char* id) {
   for (int i = 0; i < kPatternSpecsCount; i++) {

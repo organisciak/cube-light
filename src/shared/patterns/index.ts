@@ -3,6 +3,7 @@ import { wavySheet } from './wavySheet';
 import { solid } from './solid';
 import { indexWalk } from './indexWalk';
 import { litPixel } from './litPixel';
+import { buildMap } from './buildMap';
 import { rain } from './rain';
 import { rotatingPlanes } from './rotatingPlanes';
 import { audioRipple } from './audioRipple';
@@ -45,6 +46,7 @@ export const patterns: Record<string, Pattern> = {
   [solid.meta.id]: solid,
   [indexWalk.meta.id]: indexWalk,
   [litPixel.meta.id]: litPixel,
+  [buildMap.meta.id]: buildMap,
 };
 
 export const defaultPatternId = wavySheet.meta.id;

@@ -342,6 +342,21 @@ the layout when it&rsquo;s unique.</p>
   <button id="apply" class="sec" disabled>Apply layout</button>
 </div>
 <div id="result"></div>
+
+<hr style="border-color:#26262e;margin:24px 0">
+<h1>Assembly map</h1>
+<p>For the <b>physical build</b> &mdash; no calibration needed, this lights LEDs
+by raw wire index. <span style="color:#4de0e0">Cyan</span> marks the <b>start of
+every strand</b> (with a dim tail showing wire direction);
+<span style="color:#e0a24d">amber</span> marks each strand <b>center</b>. Use it
+to line strands up as you thread them into the grid.</p>
+<div class="row">
+  <div><label>Strand length (LEDs)</label><input id="period" type="number" min="2" max="100" value="10"></div>
+  <button id="buildStart">Show map</button>
+</div>
+<label style="display:flex;gap:8px;align-items:center;margin-top:12px">
+  <input id="centers" type="checkbox" checked style="width:auto"> Mark strand centers</label>
+
 <p><a href="/">&larr; back to console</a></p>
 <script>
 const $=id=>document.getElementById(id);
@@ -385,6 +400,11 @@ $('apply').onclick=async()=>{
   $('result').className='ok';
   $('result').textContent='Layout applied and saved. Pick a pattern on the console to admire your correctly-mapped cube.';
 };
+const setPeriod=()=>post('/api/param?key=period&v='+(+$('period').value||10));
+const setCenters=()=>post('/api/param?key=showCenter&type=bool&v='+($('centers').checked?'1':'0'));
+$('buildStart').onclick=async()=>{await post('/api/pattern?id=build-map');await setPeriod();await setCenters()};
+$('period').addEventListener('change',setPeriod);
+$('centers').addEventListener('change',setCenters);
 </script></body></html>)HTML";
 
 // LED hardware page: output pins + chain split, applied live.
