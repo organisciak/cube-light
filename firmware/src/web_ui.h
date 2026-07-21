@@ -53,6 +53,14 @@ pattern below won't show until it stops.</div>
 </div>
 </details>
 
+<details id="presetsBox"><summary>Presets</summary>
+<div id="presetList"></div>
+<div class="prow" id="presetSave">
+  <input type="text" id="presetName" placeholder="Save current as…">
+  <button id="presetSaveBtn" class="pri">Save</button>
+</div>
+</details>
+
 <button class="pri" id="guestReset" style="display:none;width:100%;padding:12px;margin-top:18px">Alright, broken it in enough? Set it back →</button>
 
 <div class="stat" id="stat"></div>
@@ -65,6 +73,7 @@ async function refresh(){
   if(sel.options.length===0) for(const p of s.patterns){const o=document.createElement('option');o.value=o.textContent=p;sel.appendChild(o)}
   sel.value=s.pattern;
   micOn=s.micOn; drawMic();
+  isGuest=!!s.guest;
   $('liveBanner').style.display=s.live?'block':'none';
   // Guests (on the cube's own hotspot) can tinker but not clobber saved
   // settings — hide the admin door, offer a friendly "set it back" button.
@@ -75,8 +84,10 @@ async function refresh(){
   }
   $('stat').textContent=`ip ${s.ip} · rssi ${s.rssi}dBm · ${s.fps}fps target · v${s.version}`;
   loadParams();
+  loadPresets();
 }
 let micOn=true;
+let isGuest=false;
 function drawMic(){
   const b=$('micToggle');
   b.textContent=micOn?'🎤 ON — sound drives the patterns':'🔇 OFF — patterns ignore sound';
@@ -141,6 +152,30 @@ $('guestReset').onclick=async()=>{
   setTimeout(()=>$('guestReset').textContent='Alright, broken it in enough? Set it back →',2200);
 };
 $('pattern').onchange=async e=>{await post('/api/pattern?id='+encodeURIComponent(e.target.value));loadParams()};
+async function loadPresets(){
+  const list=await (await fetch('/api/presets')).json();
+  const box=$('presetList');box.innerHTML='';
+  if(!list.length)box.innerHTML='<div style="font-size:12px;color:#777;margin:8px 0">No presets saved yet.</div>';
+  for(const p of list){
+    const row=document.createElement('div');row.className='prow';
+    const lab=document.createElement('label');lab.textContent=p.name+' · '+p.pattern;lab.style.flex='1';row.appendChild(lab);
+    const load=document.createElement('button');load.textContent='Load';
+    load.onclick=async()=>{await post('/api/presets/load?name='+encodeURIComponent(p.name));refresh()};
+    row.appendChild(load);
+    if(!isGuest){
+      const del=document.createElement('button');del.textContent='✕';del.title='Delete';
+      del.onclick=async()=>{if(confirm('Delete "'+p.name+'"?')){await post('/api/presets/delete?name='+encodeURIComponent(p.name));loadPresets()}};
+      row.appendChild(del);
+    }
+    box.appendChild(row);
+  }
+  $('presetSave').style.display=isGuest?'none':'flex';
+}
+$('presetSaveBtn').onclick=async()=>{
+  const n=$('presetName').value.trim();if(!n)return;
+  await post('/api/presets/save?name='+encodeURIComponent(n));
+  $('presetName').value='';loadPresets();
+};
 refresh();
 </script></body></html>)HTML";
 

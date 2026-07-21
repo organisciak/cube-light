@@ -41,6 +41,7 @@
 #include "cube_palettes.h"
 #include "cube_param_specs.h"
 #include "cube_pattern.h"
+#include "cube_presets.h"
 #include "cube_snake.h"
 #include "cube_power.h"
 #include "web_ui.h"
@@ -345,6 +346,60 @@ void setPatternById(const String& id) {
       return;
     }
   }
+}
+
+// ---- presets ------------------------------------------------------------------
+//
+// Snapshot the live pattern + its effective params into a named preset file,
+// and load one back. Param types mirror effectiveParam/applyParamFromString:
+// type 1 = bool, 2/3/4 = enum/palette/string, everything else (0 num, 5 color)
+// = number.
+
+void savePresetSnapshot(const String& name, int priority, float dwellSec) {
+  JsonDocument doc;
+  doc["name"] = name;
+  doc["pattern"] = settings.patternId;
+  doc["priority"] = priority;
+  doc["dwellSec"] = dwellSec;
+  JsonObject p = doc["params"].to<JsonObject>();
+  const PatternSpecs* ps = specsFor(settings.patternId.c_str());
+  if (ps) {
+    for (int i = 0; i < ps->count; i++) {
+      const ParamSpec& sp = ps->specs[i];
+      switch (sp.type) {
+        case 1: p[sp.key] = params.boolean(sp.key, sp.defNum != 0); break;
+        case 2:
+        case 3:
+        case 4: p[sp.key] = params.str(sp.key, sp.defStr); break;
+        default: p[sp.key] = params.num(sp.key, sp.defNum); break;
+      }
+    }
+  }
+  presetWrite(name, doc);
+}
+
+bool loadPresetByName(const String& name) {
+  JsonDocument doc;
+  if (!presetRead(name, doc)) return false;
+  const char* pat = doc["pattern"] | "";
+  if (pat[0]) setPatternById(String(pat));  // clears params, loads NVS defaults, inits
+  JsonObject p = doc["params"].as<JsonObject>();
+  const PatternSpecs* ps = specsFor(settings.patternId.c_str());
+  if (ps && !p.isNull()) {
+    for (int i = 0; i < ps->count; i++) {
+      const ParamSpec& sp = ps->specs[i];
+      if (p[sp.key].isNull()) continue;
+      switch (sp.type) {
+        case 1: params.setBool(sp.key, p[sp.key].as<bool>()); break;
+        case 2:
+        case 3:
+        case 4: params.setStr(sp.key, p[sp.key].as<const char*>()); break;
+        default: params.setNum(sp.key, p[sp.key].as<float>()); break;
+      }
+    }
+  }
+  if (activePattern && activePattern->init) activePattern->init(ctx);
+  return true;
 }
 
 // ---- DNRGB live override ------------------------------------------------------
@@ -735,6 +790,54 @@ void setupWebServer() {
     if (activePattern->init) activePattern->init(ctx);
     server.send(200, "text/plain", "ok");
   });
+  // ---- presets ----
+  // List saved presets (metadata only; params omitted). Open to guests.
+  server.on("/api/presets", HTTP_GET, []() {
+    PresetMeta metas[kMaxPresets];
+    const int n = presetList(metas, kMaxPresets);
+    String json = "[";
+    for (int i = 0; i < n; i++) {
+      if (i) json += ',';
+      String nm = metas[i].name;
+      nm.replace("\\", "\\\\");
+      nm.replace("\"", "\\\"");
+      json += "{\"name\":\"" + nm + "\",\"pattern\":\"" + metas[i].pattern +
+              "\",\"priority\":" + String(metas[i].priority) +
+              ",\"dwellSec\":" + String(metas[i].dwellSec, 0) + "}";
+    }
+    json += "]";
+    server.send(200, "application/json", json);
+  });
+  // Snapshot the live pattern + params as a named preset. Owner-only.
+  server.on("/api/presets/save", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    const String name = server.arg("name");
+    if (name.length() == 0) {
+      server.send(400, "text/plain", "name required");
+      return;
+    }
+    const int priority =
+        server.hasArg("priority") ? constrain((int)server.arg("priority").toInt(), 0, 5) : 3;
+    const float dwell = server.hasArg("dwellSec") ? server.arg("dwellSec").toFloat() : 20.0f;
+    savePresetSnapshot(name, priority, dwell);
+    server.send(200, "text/plain", "ok");
+  });
+  // Apply a preset (changes the live pattern) — allowed for guests.
+  server.on("/api/presets/load", HTTP_POST, []() {
+    if (!loadPresetByName(server.arg("name"))) {
+      server.send(404, "text/plain", "no such preset");
+      return;
+    }
+    server.send(200, "text/plain", "ok");
+  });
+  // Delete a preset. Owner-only.
+  server.on("/api/presets/delete", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    presetDelete(server.arg("name"));
+    server.send(200, "text/plain", "ok");
+  });
   // Runtime LED hardware config: pins + single/dual split. Applies live
   // (strips are rebuilt) and persists.
   server.on("/api/ledcfg", HTTP_POST, []() {
@@ -909,6 +1012,7 @@ void setupWebServer() {
 void setup() {
   Serial.begin(115200);
   loadSettings();
+  presetsBegin();  // mount LittleFS for preset storage
   applyColorOrder(settings.colorOrder);
   applyGeometry();
 #if CUBE_BUTTON_PIN >= 0
