@@ -357,16 +357,22 @@ void loadPatternMods(int idx) {
     if (c4 < 0) continue;
     const uint8_t mode = ModStore::modeFromName(v.substring(0, c1).c_str());
     if (mode == ModStore::OFF) continue;
-    const float mn = v.substring(c1 + 1, c2).toFloat();
-    const float mx = v.substring(c2 + 1, c3).toFloat();
+    float mn = v.substring(c1 + 1, c2).toFloat();
+    float mx = v.substring(c2 + 1, c3).toFloat();
     const float rate = v.substring(c3 + 1, c4).toFloat();
     const float step = v.substring(c4 + 1).toFloat();
-    float quant = 0;
+    // Don't trust the NVS blob: clamp bounds to the spec range (out-of-range
+    // mod bounds can push patterns outside their safe input domain — and a
+    // bad blob would otherwise re-arm the hazard on every boot).
+    const ParamSpec* msp = nullptr;
     if (mps)
       for (int i = 0; i < mps->count; i++)
-        if (key == mps->specs[i].key) { quant = mps->specs[i].stepV; break; }
+        if (key == mps->specs[i].key) { msp = &mps->specs[i]; break; }
+    if (!msp || msp->type != 0) continue;
+    mn = constrain(mn, msp->minV, msp->maxV);
+    mx = constrain(mx, msp->minV, msp->maxV);
     mods.set(key.c_str(), mode, mn, mx, rate, step, params.num(key.c_str(), mn),
-             quant);
+             msp->stepV, msp->minV);
   }
 }
 
@@ -388,7 +394,10 @@ void savePatternMods(int idx) {
   prefs.end();
 }
 
-void setPatternByIndex(int i) {
+// `persist=false` skips the NVS write — used by transient switches (playlist
+// advances, the snake-cal wizard) so automatic cycling doesn't wear flash or
+// change what the cube boots into.
+void setPatternByIndex(int i, bool persist = true) {
   activePatternIdx = ((i % kPatternCount) + kPatternCount) % kPatternCount;
   activePattern = kPatterns[activePatternIdx];
   patternStartMs = millis();
@@ -400,14 +409,14 @@ void setPatternByIndex(int i) {
   loadPatternMods(activePatternIdx);
   if (activePattern->init) activePattern->init(ctx);
   settings.patternId = activePattern->id;
-  saveSetting("pattern", settings.patternId);
+  if (persist) saveSetting("pattern", settings.patternId);
   Serial.printf("[pattern] %s\n", activePattern->id);
 }
 
-void setPatternById(const String& id) {
+void setPatternById(const String& id, bool persist = true) {
   for (int i = 0; i < kPatternCount; i++) {
     if (id == kPatterns[i]->id) {
-      setPatternByIndex(i);
+      setPatternByIndex(i, persist);
       return;
     }
   }
@@ -433,6 +442,8 @@ uint8_t snakeDirMap[4] = {2, 3, 1, 0};
 const SnakeDir kCalTargets[4] = {SnakeDir::XP, SnakeDir::XN, SnakeDir::YP, SnakeDir::YN};
 int snakeCalIndex = -1;        // -1 = not calibrating; else 0..3
 String snakeCalReturnPattern;  // pattern to restore when the wizard ends
+uint32_t snakeCalStartMs = 0;  // for the abandonment timeout
+bool snakeCalGuest = false;    // guest wizard: mapping applies in RAM only
 
 int snakeButtonIndex(const String& b) {
   if (b == "up") return 0;
@@ -493,27 +504,30 @@ void savePresetSnapshot(const String& name, int priority, float dwellSec) {
       }
     }
   }
-  // Carry any active per-param modulation with the preset.
-  if (mods.count() > 0) {
-    JsonObject m = doc["mods"].to<JsonObject>();
-    for (int i = 0; i < mods.count(); i++) {
-      const ModStore::Entry* e = mods.at(i);
-      JsonObject o = m[e->key].to<JsonObject>();
-      o["mode"] = ModStore::modeName(e->mode);
-      o["min"] = e->minV;
-      o["max"] = e->maxV;
-      o["rate"] = e->rate;
-      o["step"] = e->step;
-    }
+  // Carry per-param modulation with the preset — ALWAYS emit the object, even
+  // when empty, so "no modulation" round-trips (loading a mod-free preset
+  // must clear any NVS-loaded mods rather than inherit them).
+  JsonObject m = doc["mods"].to<JsonObject>();
+  for (int i = 0; i < mods.count(); i++) {
+    const ModStore::Entry* e = mods.at(i);
+    JsonObject o = m[e->key].to<JsonObject>();
+    o["mode"] = ModStore::modeName(e->mode);
+    o["min"] = e->minV;
+    o["max"] = e->maxV;
+    o["rate"] = e->rate;
+    o["step"] = e->step;
   }
   presetWrite(name, doc);
 }
 
-bool loadPresetByName(const String& name) {
+bool loadPresetByName(const String& name, bool persistPattern = true) {
   JsonDocument doc;
   if (!presetRead(name, doc)) return false;
   const char* pat = doc["pattern"] | "";
-  if (pat[0]) setPatternById(String(pat));  // clears params, loads NVS defaults, inits
+  // Unknown/typo'd pattern id: fail loudly instead of silently perturbing
+  // whatever pattern happens to be active.
+  if (!pat[0] || !specsFor(pat)) return false;
+  setPatternById(String(pat), persistPattern);  // clears params, loads NVS defaults, inits
   JsonObject p = doc["params"].as<JsonObject>();
   const PatternSpecs* ps = specsFor(settings.patternId.c_str());
   if (ps && !p.isNull()) {
@@ -524,15 +538,25 @@ bool loadPresetByName(const String& name) {
         case 1: params.setBool(sp.key, p[sp.key].as<bool>()); break;
         case 2:
         case 3:
-        case 4: params.setStr(sp.key, p[sp.key].as<const char*>()); break;
+        case 4: {
+          // as<const char*>() is null for non-string JSON values (hand-edited
+          // import); setStr guards too, but skip explicitly here.
+          const char* sv = p[sp.key].as<const char*>();
+          if (sv) params.setStr(sp.key, sv);
+          break;
+        }
         default: params.setNum(sp.key, p[sp.key].as<float>()); break;
       }
     }
   }
-  // If the preset carries modulation, it replaces whatever setPatternById
-  // loaded from NVS. Only numeric params can be modulated.
-  JsonObject m = doc["mods"].as<JsonObject>();
-  if (!m.isNull()) {
+  // The preset's "mods" object (present — possibly empty — in every preset
+  // saved since it was introduced) replaces whatever setPatternById loaded
+  // from NVS; an empty object means "this preset runs unmodulated". Legacy
+  // presets without the key keep the NVS mods. Numeric params only; bounds
+  // clamped to the spec range (out-of-range mod bounds could drive patterns
+  // out of their safe input domain).
+  if (doc["mods"].is<JsonObject>()) {
+    JsonObject m = doc["mods"].as<JsonObject>();
     mods.clear();
     for (JsonPair kv : m) {
       const ParamSpec* mp = nullptr;
@@ -543,9 +567,11 @@ bool loadPresetByName(const String& name) {
       JsonObject o = kv.value().as<JsonObject>();
       const uint8_t mode = ModStore::modeFromName(o["mode"] | "off");
       if (mode == ModStore::OFF) continue;
-      mods.set(kv.key().c_str(), mode, o["min"] | mp->minV, o["max"] | mp->maxV,
-               o["rate"] | 1.0f, o["step"] | mp->stepV,
-               params.num(kv.key().c_str(), mp->defNum), mp->stepV);
+      const float mn = constrain(o["min"] | mp->minV, mp->minV, mp->maxV);
+      const float mx = constrain(o["max"] | mp->maxV, mp->minV, mp->maxV);
+      mods.set(kv.key().c_str(), mode, mn, mx, o["rate"] | 1.0f,
+               o["step"] | mp->stepV, params.num(kv.key().c_str(), mp->defNum),
+               mp->stepV, mp->minV);
     }
   }
   if (activePattern && activePattern->init) activePattern->init(ctx);
@@ -581,7 +607,9 @@ void pausePlaylistForManual() {
 
 void playlistLoadIndex(const PresetMeta* metas, int i) {
   playlistLoading = true;
-  loadPresetByName(metas[i].name);
+  // persistPattern=false: an automatic advance shouldn't write NVS every
+  // dwell (flash wear) or decide what the cube boots into.
+  loadPresetByName(metas[i].name, false);
   playlistLoading = false;
   playlist.current = metas[i].name;
   playlist.dwellSec = metas[i].dwellSec > 0 ? metas[i].dwellSec : 20.0f;
@@ -822,9 +850,20 @@ bool authed() {
 // spoofed by the UI. When no AP is up (clean STA), there are no guests.
 bool isGuestRequest() {
   if (WiFi.getMode() == WIFI_STA) return false;
+  // Unconfigured cube (no home Wi-Fi saved): the AP *is* the setup console —
+  // whoever is there is the owner. Without this, first boot would 403 the
+  // /wifi page and the cube could never be configured.
+  if (settings.wifiSsid.length() == 0) return false;
   const IPAddress ap = WiFi.softAPIP();
   const IPAddress cl = server.client().remoteIP();
-  return cl[0] == ap[0] && cl[1] == ap[1] && cl[2] == ap[2];
+  if (!(cl[0] == ap[0] && cl[1] == ap[1] && cl[2] == ap[2])) return false;
+  // AP-subnet client — a guest, unless a console password is set and this
+  // client proves ownership with it (the owner's escape hatch when the cube
+  // is on its fallback AP away from home).
+  if (settings.uiPass.length() &&
+      server.authenticate("cube", settings.uiPass.c_str()))
+    return false;
+  return true;
 }
 
 // Reject owner-only actions from guests with a friendly 403. Returns true if
@@ -859,7 +898,8 @@ void handleStatus() {
   json += ",\"uptimeS\":" + String(millis() / 1000);
   json += ",\"micOn\":" + String(settings.micEnabled ? "true" : "false");
   json += ",\"guest\":" + String(isGuestRequest() ? "true" : "false");
-  json += ",\"live\":" + String(millis() < liveUntilMs ? "true" : "false");
+  json += ",\"live\":" +
+          String((int32_t)(liveUntilMs - millis()) > 0 ? "true" : "false");
   json += ",\"up\":\"" + settings.upAxis + "\"";
   json += ",\"ledPin\":" + String(settings.ledPin) + ",\"ledPin2\":" + String(settings.ledPin2) +
           ",\"ledSplit\":" + String(settings.ledSplit);
@@ -921,20 +961,20 @@ void setupWebServer() {
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/supply", HTTP_POST, []() {
-    if (!authed()) return;
+    if (guestBlocked() || !authed()) return;
     settings.supplyMA = (uint32_t)server.arg("ma").toInt();
     saveSetting("supply", settings.supplyMA);
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/order", HTTP_POST, []() {
-    if (!authed()) return;
+    if (guestBlocked() || !authed()) return;
     settings.colorOrder = server.arg("v");
     applyColorOrder(settings.colorOrder);
     saveSetting("order", settings.colorOrder);
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/scan", HTTP_GET, []() {
-    if (!authed()) return;
+    if (guestBlocked() || !authed()) return;
     // Synchronous scan (~2s; patterns pause one beat — fine on a settings
     // page). Needs the STA interface alongside a running AP.
     if (WiFi.getMode() == WIFI_AP) WiFi.mode(WIFI_AP_STA);
@@ -962,7 +1002,7 @@ void setupWebServer() {
     server.send(200, "application/json", json);
   });
   server.on("/api/wifitest", HTTP_POST, []() {
-    if (!authed()) return;
+    if (guestBlocked() || !authed()) return;
     // Trial join in AP_STA so the hotspot (and this page) survive the test.
     WiFi.mode(WIFI_AP_STA);
     WiFi.begin(server.arg("ssid").c_str(), server.arg("pass").c_str());
@@ -973,7 +1013,7 @@ void setupWebServer() {
     server.send(200, "text/plain", "started");
   });
   server.on("/api/wifitest", HTTP_GET, []() {
-    if (!authed()) return;
+    if (guestBlocked() || !authed()) return;
     server.send(200, "application/json",
                 "{\"state\":\"" + wifiTestResult + "\",\"ip\":\"" + wifiTestIp + "\"}");
   });
@@ -998,15 +1038,20 @@ void setupWebServer() {
     for (int i = 0; i < ps->count; i++) {
       const ParamSpec& sp = ps->specs[i];
       if (i) json += ',';
+      // Escape the value: string params (e.g. text-3d's text) are user input
+      // and a stray quote/backslash/control char would break the whole JSON.
+      String val = isActive ? effectiveParam(sp)
+                            : (sp.type == 0 ? String(sp.defNum, 3)
+                               : sp.type == 1 ? String(sp.defNum != 0 ? "1" : "0")
+                                              : String(sp.defStr));
+      val.replace("\\", "\\\\");
+      val.replace("\"", "\\\"");
+      for (size_t vi = 0; vi < val.length(); vi++)
+        if ((uint8_t)val[vi] < 0x20) val.setCharAt(vi, ' ');
       json += "{\"key\":\"" + String(sp.key) + "\",\"label\":\"" + String(sp.label) +
               "\",\"type\":" + String(sp.type) + ",\"min\":" + String(sp.minV, 3) +
               ",\"max\":" + String(sp.maxV, 3) + ",\"step\":" + String(sp.stepV, 3) +
-              ",\"options\":\"" + String(sp.options) + "\",\"value\":\"" +
-              (isActive ? effectiveParam(sp)
-                        : (sp.type == 0 ? String(sp.defNum, 3)
-                           : sp.type == 1 ? String(sp.defNum != 0 ? "1" : "0")
-                                          : String(sp.defStr))) +
-              "\"";
+              ",\"options\":\"" + String(sp.options) + "\",\"value\":\"" + val + "\"";
       // Active-pattern numeric params carry their modulation config, if any.
       const ModStore::Entry* me = isActive ? mods.find(sp.key) : nullptr;
       if (me)
@@ -1079,31 +1124,55 @@ void setupWebServer() {
   server.on("/api/presets/save", HTTP_POST, []() {
     if (guestBlocked()) return;
     if (!authed()) return;
-    const String name = server.arg("name");
+    String name = server.arg("name");
+    // Strip control chars (they'd corrupt the hand-built JSON list output).
+    for (size_t i = 0; i < name.length();)
+      if ((uint8_t)name[i] < 0x20) name.remove(i, 1); else i++;
     if (name.length() == 0) {
       server.send(400, "text/plain", "name required");
       return;
     }
+    // Enforce the cap here like import does — an over-cap write would succeed
+    // on disk but be invisible to the list/playlist/export.
+    {
+      PresetMeta metas[kMaxPresets];
+      const int n = presetList(metas, kMaxPresets);
+      bool exists = false;
+      for (int i = 0; i < n; i++)
+        if (presetSlug(metas[i].name) == presetSlug(name)) { exists = true; break; }
+      if (!exists && n >= kMaxPresets) {
+        server.send(507, "text/plain", "preset limit reached (40) — delete some first");
+        return;
+      }
+    }
     const int priority =
         server.hasArg("priority") ? constrain((int)server.arg("priority").toInt(), 0, 5) : 3;
-    const float dwell = server.hasArg("dwellSec") ? server.arg("dwellSec").toFloat() : 20.0f;
+    const float dwell = server.hasArg("dwellSec")
+                            ? max(1.0f, server.arg("dwellSec").toFloat())
+                            : 20.0f;
     savePresetSnapshot(name, priority, dwell);
     server.send(200, "text/plain", "ok");
   });
   // Apply a preset (changes the live pattern) — allowed for guests.
   server.on("/api/presets/load", HTTP_POST, []() {
-    pausePlaylistForManual();  // loading a single preset stops the cycle
     if (!loadPresetByName(server.arg("name"))) {
       server.send(404, "text/plain", "no such preset");
-      return;
+      return;  // a failed load shouldn't kill a running cycle
     }
+    pausePlaylistForManual();  // loading a single preset stops the cycle
     server.send(200, "text/plain", "ok");
   });
   // Delete a preset. Owner-only.
   server.on("/api/presets/delete", HTTP_POST, []() {
     if (guestBlocked()) return;
     if (!authed()) return;
-    presetDelete(server.arg("name"));
+    const String name = server.arg("name");
+    if (name.length() == 0) {
+      server.send(400, "text/plain", "name required");
+      return;
+    }
+    presetDelete(name);
+    if (playlist.current == name) playlist.current = "";  // cursor restarts cleanly
     server.send(200, "text/plain", "ok");
   });
   // Edit just a preset's playlist metadata (dwellSec/priority) without
@@ -1119,11 +1188,17 @@ void setupWebServer() {
     }
     if (server.hasArg("priority"))
       doc["priority"] = constrain((int)server.arg("priority").toInt(), 0, 5);
-    if (server.hasArg("dwellSec")) doc["dwellSec"] = server.arg("dwellSec").toFloat();
-    presetWrite(name, doc);
+    // Clamp dwell >= 1s: 0/garbage would make the live playlist advance every
+    // frame (a strobe of preset switches).
+    const float dwell = max(1.0f, server.arg("dwellSec").toFloat());
+    if (server.hasArg("dwellSec")) doc["dwellSec"] = dwell;
+    if (!presetWrite(name, doc)) {
+      server.send(500, "text/plain", "write failed");
+      return;
+    }
     // Reflect a new dwell on the live preset immediately.
     if (playlist.enabled && playlist.current == name && server.hasArg("dwellSec"))
-      playlist.dwellSec = server.arg("dwellSec").toFloat();
+      playlist.dwellSec = dwell;
     server.send(200, "text/plain", "ok");
   });
   // Download presets as a JSON file (Content-Disposition triggers a browser
@@ -1174,6 +1249,12 @@ void setupWebServer() {
   server.on("/api/presets/import", HTTP_POST, []() {
     if (guestBlocked()) return;
     if (!authed()) return;
+    // Whole-body-in-RAM parse: cap the size so a huge upload can't OOM the
+    // chip (40 legit presets ≈ 25KB; 64KB is generous headroom).
+    if (server.arg("plain").length() > 64 * 1024) {
+      server.send(413, "text/plain", "too large (max 64KB)");
+      return;
+    }
     JsonDocument doc;
     if (deserializeJson(doc, server.arg("plain"))) {
       server.send(400, "text/plain", "invalid json");
@@ -1192,8 +1273,9 @@ void setupWebServer() {
       if (!exists && count >= kMaxPresets) { skipped++; return; }
       JsonDocument out;
       out.set(o);  // deep copy of this preset object
-      if (out["priority"].isNull()) out["priority"] = 3;
-      if (out["dwellSec"].isNull()) out["dwellSec"] = 20.0f;
+      // Clamp hand-edited metadata to the same ranges save/meta enforce.
+      out["priority"] = constrain((int)(out["priority"] | 3), 0, 5);
+      out["dwellSec"] = max(1.0f, (float)(out["dwellSec"] | 20.0f));
       presetWrite(name, out);
       if (exists) overwritten++;
       else { imported++; count++; }
@@ -1213,8 +1295,9 @@ void setupWebServer() {
                     String(overwritten) + ",\"skipped\":" + String(skipped) + "}");
   });
   // Rename a preset's display name. Writes the preset under the new slug and
-  // deletes the old file if the slug changed. If ?to already exists (different
-  // slug), it is OVERWRITTEN — same replace semantics as import. Owner-only.
+  // deletes the old file only after that write succeeds. Renaming onto an
+  // EXISTING different preset is rejected (409) — silent overwrite through a
+  // rename prompt is a data-loss trap; delete the target first if intended.
   server.on("/api/presets/rename", HTTP_POST, []() {
     if (guestBlocked()) return;
     if (!authed()) return;
@@ -1229,9 +1312,20 @@ void setupWebServer() {
       server.send(404, "text/plain", "no such preset");
       return;
     }
+    const bool slugChanged = presetSlug(from) != presetSlug(to);
+    if (slugChanged) {
+      JsonDocument tmp;
+      if (presetRead(to, tmp)) {
+        server.send(409, "text/plain", "a preset with that name already exists");
+        return;
+      }
+    }
     doc["name"] = to;
-    presetWrite(to, doc);
-    if (presetSlug(from) != presetSlug(to)) presetDelete(from);
+    if (!presetWrite(to, doc)) {  // never delete the original on a failed write
+      server.send(500, "text/plain", "write failed");
+      return;
+    }
+    if (slugChanged) presetDelete(from);
     if (playlist.current == from) playlist.current = to;
     server.send(200, "text/plain", "ok");
   });
@@ -1318,7 +1412,7 @@ void setupWebServer() {
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/up", HTTP_POST, []() {
-    if (!authed()) return;
+    if (guestBlocked() || !authed()) return;
     settings.upAxis = server.arg("v");
     applyGeometry();
     saveLayoutAndUp();
@@ -1381,13 +1475,17 @@ void setupWebServer() {
     if (server.hasArg("max")) mx = server.arg("max").toFloat();
     if (server.hasArg("rate")) rate = server.arg("rate").toFloat();
     if (server.hasArg("step")) step = server.arg("step").toFloat();
+    // Clamp to the spec range: a mod driving a param outside it can crash
+    // patterns (e.g. fire baseLayers indexes an array by the value).
+    mn = constrain(mn, sp->minV, sp->maxV);
+    mx = constrain(mx, sp->minV, sp->maxV);
     mods.set(key.c_str(), mode, mn, mx, rate, step,
-             params.num(key.c_str(), sp->defNum), sp->stepV);
+             params.num(key.c_str(), sp->defNum), sp->stepV, sp->minV);
     server.send(200, "text/plain", "ok");
   });
   // Body: text lines "led,x,y,z". Returns candidates/suggestion as JSON.
   server.on("/api/calibrate/solve", HTTP_POST, []() {
-    if (!authed()) return;
+    if (guestBlocked() || !authed()) return;
     static CalSample samples[64];
     int count = 0;
     const String body = server.arg("plain");
@@ -1476,10 +1574,16 @@ void setupWebServer() {
   });
   // ---- snake direction calibration wizard ----
   // Start: remember the current pattern, switch to the arrow visual, prompt 0.
+  // Deliberately guest-open (players calibrate for where they stand), but a
+  // guest's mapping is applied in RAM only — never saved to NVS.
   server.on("/api/snakecal/start", HTTP_POST, []() {
-    snakeCalReturnPattern = settings.patternId;
+    pausePlaylistForManual();  // a dwell rollover mid-wizard would swap the visual
+    if (settings.patternId != "snake-cal")  // double-start keeps the ORIGINAL return
+      snakeCalReturnPattern = settings.patternId;
     snakeCalIndex = 0;
-    setPatternById("snake-cal");
+    snakeCalStartMs = millis();
+    snakeCalGuest = isGuestRequest();
+    setPatternById("snake-cal", /*persist=*/false);
     params.setNum("dir", (float)(int)kCalTargets[0]);
     server.send(200, "text/plain", "ok");
   });
@@ -1510,9 +1614,10 @@ void setupWebServer() {
     snakeDirMap[bi] = (uint8_t)(int)kCalTargets[snakeCalIndex];
     snakeCalIndex++;
     if (snakeCalIndex >= 4) {
-      saveSnakeDirMap();
+      if (!snakeCalGuest) saveSnakeDirMap();  // guests: live mapping only
       snakeCalIndex = -1;
-      setPatternById(snakeCalReturnPattern.length() ? snakeCalReturnPattern : String("snake-3d"));
+      setPatternById(snakeCalReturnPattern.length() ? snakeCalReturnPattern : String("snake-3d"),
+                     /*persist=*/false);
       server.send(200, "application/json", "{\"done\":true}");
     } else {
       params.setNum("dir", (float)(int)kCalTargets[snakeCalIndex]);
@@ -1522,7 +1627,8 @@ void setupWebServer() {
   // Cancel: abandon the wizard, restore the prior pattern (map unchanged).
   server.on("/api/snakecal/cancel", HTTP_POST, []() {
     snakeCalIndex = -1;
-    setPatternById(snakeCalReturnPattern.length() ? snakeCalReturnPattern : String("snake-3d"));
+    setPatternById(snakeCalReturnPattern.length() ? snakeCalReturnPattern : String("snake-3d"),
+                   /*persist=*/false);
     server.send(200, "text/plain", "ok");
   });
   server.on("/wifi", HTTP_GET, []() {
@@ -1593,6 +1699,19 @@ void loop() {
   handleRealtime();
   handleButton();
   playlistTick();
+  // Snake-cal wizard watchdog: restore the prior pattern if the page was
+  // abandoned (5 min), and abort the wizard if something else (the physical
+  // button) switched the pattern out from under it.
+  if (snakeCalIndex >= 0) {
+    if (millis() - snakeCalStartMs > 5UL * 60UL * 1000UL) {
+      snakeCalIndex = -1;
+      setPatternById(snakeCalReturnPattern.length() ? snakeCalReturnPattern
+                                                    : String("snake-3d"),
+                     /*persist=*/false);
+    } else if (settings.patternId != "snake-cal") {
+      snakeCalIndex = -1;
+    }
+  }
 
   static uint32_t nextFrameMs = 0;
   const uint32_t now = millis();

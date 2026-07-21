@@ -31,7 +31,10 @@ void render(PatternCtx& ctx) {
   const float cooling = p.num("cooling", 1.4f);
   const float sparking = p.num("sparking", 0.55f);
   const float sparkHeat = p.num("sparkHeat", 200.0f);
-  const int baseLayers = (int)std::fmax(1.0f, std::floor(p.num("baseLayers", 2.0f)));
+  // Clamped both ends: an out-of-range value (bad mod config / raw API call)
+  // would index s_heat past the cube.
+  const int baseLayers = (int)std::fmax(
+      1.0f, std::fmin((float)N, std::floor(p.num("baseLayers", 2.0f))));
   const float drift = std::fmin(1.0f, p.num("driftRate", 0.85f));
   const PaletteRef pal = resolvePalette(p.str("palette", "fire"));
   const float audioGain = p.num("audioGain", 2.0f);

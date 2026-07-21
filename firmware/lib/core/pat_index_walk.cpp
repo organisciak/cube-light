@@ -9,7 +9,8 @@ namespace {
 
 void render(PatternCtx& ctx) {
   const float speed = ctx.params->num("speed", 25.0f);
-  const int tail = (int)std::fmax(0.0f, std::floor(ctx.params->num("tail", 6.0f)));
+  const int tail = (int)std::fmax(
+      0.0f, std::fmin(50.0f, std::floor(ctx.params->num("tail", 6.0f))));
   std::memset(ctx.buffer, 0, NUM_LEDS * 3);
   const int head = (int)(ctx.t * speed) % NUM_LEDS;
   for (int k = 0; k <= tail; k++) {

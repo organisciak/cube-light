@@ -38,6 +38,7 @@ void buildSpiralPath() {
 
 float s_lastT = 0;
 float s_phase = 0;
+float s_offSpeed = -1;  // low-passed speed for the per-layer offset (<0 = unset)
 
 // "cycle" axis mode: each layer's effective axis follows its OWN pass number
 // (z -> y -> x -> z ...), computed per-layer in render(). Because a layer is
@@ -50,6 +51,7 @@ void init(PatternCtx& ctx) {
   buildSpiralPath();
   s_lastT = ctx.t;
   s_phase = 0;
+  s_offSpeed = -1;
   std::memset(ctx.buffer, 0, NUM_LEDS * 3);
 }
 
@@ -76,9 +78,21 @@ void render(PatternCtx& ctx) {
   const int len = s_pathLen;
   const float cycle = 2.0f * len;
   s_phase += speed * (1.0f + ctx.audio->level * levelGain) * dt;
+  // Wrap to keep float precision over multi-day runs. 3*cycle preserves the
+  // 3-axis pass parity of "cycle" mode; wrapping only above 6*cycle keeps
+  // s_phase well above the largest per-layer offset so raw never re-enters
+  // the not-yet-started (<0) region.
+  if (s_phase > 6.0f * cycle) s_phase -= 3.0f * cycle;
+
+  // The per-layer offset scales with speed; a discrete speed change (slider,
+  // param mod) would teleport every layer's phase — mid-arm axis flips in
+  // cycle mode. Low-pass the speed used for the offset so changes glide.
+  if (s_offSpeed < 0) s_offSpeed = speed;
+  s_offSpeed += (speed - s_offSpeed) * std::fmin(1.0f, 2.0f * dt);
 
   for (int h = 0; h < N; h++) {
-    const float raw = s_phase - h * layerDelay * speed;
+    const float raw = s_phase - h * layerDelay * s_offSpeed;
+    if (raw < 0) continue;  // this layer's first pass hasn't started yet
     const float pph = std::fmod(std::fmod(raw, cycle) + cycle, cycle);
     const bool drawing = pph < len;
     const int from = drawing ? 0 : (int)(pph - len);

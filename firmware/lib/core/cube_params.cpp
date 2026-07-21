@@ -54,6 +54,7 @@ bool Params::setBool(const char* key, bool v) {
 }
 
 bool Params::setStr(const char* key, const char* v) {
+  if (!v) return false;  // e.g. JSON as<const char*>() on a non-string value
   Entry* e = upsert(key);
   if (!e) return false;
   e->type = STR;

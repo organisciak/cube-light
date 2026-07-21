@@ -44,7 +44,8 @@ void render(PatternCtx& ctx) {
   const float level = clamp01(audio.level);
   const float beat = audio.beat;
   const float thickness = baseThickness * (1.0f + level * audioGain);
-  const int planeCount = (int)std::fmax(1.0f, std::floor(p.num("planes", 1.0f)));
+  const int planeCount =
+      (int)std::fmax(1.0f, std::fmin(4.0f, std::floor(p.num("planes", 1.0f))));
   const float cr = p.num("r", 80.0f);
   const float cg = p.num("g", 200.0f);
   const float cb = p.num("b", 255.0f);

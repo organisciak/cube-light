@@ -9,7 +9,7 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>cube-light</title>
 <style>
-  body{font-family:system-ui;background:#0d0d10;color:#ddd;margin:0;padding:24px;max-width:420px;margin:auto}
+  body{font-family:system-ui;background:#0d0d10;color:#ddd;margin:0;padding:24px 24px 72px;max-width:420px;margin:auto}
   h1{font-size:18px;margin:12px 0 20px}
   label{display:block;margin:16px 0 6px;font-size:13px;color:#999}
   select,input[type=range],input[type=number]{width:100%;box-sizing:border-box;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:8px;font-size:15px}
@@ -41,6 +41,7 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
   button{padding:8px 12px;border-radius:6px;border:none;background:#26262e;color:#ccc;font-size:13px;cursor:pointer}
   button.pri{background:#2a5aa5;color:#fff}
   #plToggle{position:fixed;right:14px;bottom:14px;z-index:20;background:#2a5aa5;color:#fff;padding:10px 14px;border-radius:20px;box-shadow:0 2px 10px #0008}
+  #toast{position:fixed;left:14px;bottom:14px;z-index:50;background:#3a1d1d;color:#f0b0a0;border:1px solid #8a4438;border-radius:8px;padding:8px 12px;font-size:13px;max-width:70vw;opacity:0;transition:opacity .3s;pointer-events:none}
   #sidebar{position:fixed;top:0;right:0;bottom:0;width:320px;max-width:88vw;background:#141419;border-left:1px solid #2a2a33;box-shadow:-4px 0 18px #0009;z-index:30;transform:translateX(105%);transition:transform .22s ease;display:flex;flex-direction:column;padding:16px;box-sizing:border-box}
   #sidebar.open{transform:none}
   .plhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
@@ -60,7 +61,7 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
      (which otherwise blows each input to 100% width and hides the row). */
   #sidebar input[type=number]{width:48px;flex:0 0 auto;padding:5px 3px;font-size:13px;text-align:center}
   #sidebar input[type=text]{flex:1;min-width:0;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:8px;font-size:14px}
-  .plbtn{padding:4px 7px;font-size:12px;background:#222}
+  .plbtn{padding:6px 9px;font-size:12px;background:#222}
   #params input.modf{padding:4px;font-size:12px}
 </style></head><body>
 <nav><b>Console</b><a href="/snake">Game pad</a><a href="/admin" id="adminLink">Admin 🔒</a></nav>
@@ -110,21 +111,24 @@ pattern below won't show until it stops.</div>
 </div>
 
 <div class="stat" id="stat"></div>
+<div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
-async function post(url){await fetch(url,{method:'POST'})}
-async function refresh(){
-  const s=await (await fetch('/api/status')).json();
+let toastT=null;
+function toast(m){const t=$('toast');t.textContent=m;t.style.opacity=1;clearTimeout(toastT);toastT=setTimeout(()=>t.style.opacity=0,2000)}
+async function post(url){
+  try{
+    const r=await fetch(url,{method:'POST'});
+    if(!r.ok){let t='';try{t=(await r.text()).trim()}catch(_){}toast('⚠ '+(t||"cube didn't accept that"))}
+  }catch(e){toast("⚠ cube didn't accept that")}
+}
+let lastPat=null;
+// One status fetch feeds everything: cheap UI sync every tick. Leaves the
+// pattern select alone while focused; reloads params only when the pattern
+// changed under us (playlist advance) and nothing in #params has focus.
+function applyStatus(s){
   const sel=$('pattern');
-  if(sel.options.length===0){
-    // Split the dropdown: display patterns vs calibration/diagnostic tools.
-    const UTIL=new Set(['snake-cal','index-walk','lit-pixel','build-map']);
-    const gLight=document.createElement('optgroup');gLight.label='Light patterns';
-    const gTool=document.createElement('optgroup');gTool.label='Calibration & tools';
-    for(const p of s.patterns){const o=document.createElement('option');o.value=o.textContent=p;(UTIL.has(p)?gTool:gLight).appendChild(o)}
-    sel.appendChild(gLight);sel.appendChild(gTool);
-  }
-  sel.value=s.pattern;
+  if(document.activeElement!==sel)sel.value=s.pattern;
   micOn=s.micOn; drawMic();
   isGuest=!!s.guest;
   $('advTogWrap').style.display=isGuest?'none':'flex';  // modulation is owner-only
@@ -137,6 +141,29 @@ async function refresh(){
     $('adminLink').style.display='none';
   }
   $('stat').textContent=`ip ${s.ip} · rssi ${s.rssi}dBm · ${s.fps}fps target · v${s.version}`;
+  plState=s.playlist||{};
+  drawPlaylist();
+  if(s.pattern!==lastPat&&!$('params').contains(document.activeElement)){lastPat=s.pattern;loadParams()}
+}
+async function poll(){
+  let s;try{s=await (await fetch('/api/status')).json()}catch(e){return}
+  applyStatus(s);
+}
+async function refresh(){
+  // Initial/full populate. Retry until the cube answers — one failed fetch
+  // must not brick the page (empty select, blank mic button).
+  let s;try{s=await (await fetch('/api/status')).json()}catch(e){setTimeout(refresh,2000);return}
+  const sel=$('pattern');
+  if(sel.options.length===0){
+    // Split the dropdown: display patterns vs calibration/diagnostic tools.
+    const UTIL=new Set(['snake-cal','index-walk','lit-pixel','build-map']);
+    const gLight=document.createElement('optgroup');gLight.label='Light patterns';
+    const gTool=document.createElement('optgroup');gTool.label='Calibration & tools';
+    for(const p of s.patterns){const o=document.createElement('option');o.value=o.textContent=p;(UTIL.has(p)?gTool:gLight).appendChild(o)}
+    sel.appendChild(gLight);sel.appendChild(gTool);
+  }
+  lastPat=s.pattern;
+  applyStatus(s);
   loadParams();
   loadPresets();
 }
@@ -187,7 +214,9 @@ function makeRow(sp,d,group){
     ctl=document.createElement('input');ctl.type='range';
     ctl.min=sp.min;ctl.max=sp.max;ctl.step=sp.step||0.01;ctl.value=parseFloat(sp.value);
     out=document.createElement('output');out.textContent=(+sp.value).toFixed(2).replace(/\.?0+$/,'');
-    ctl.oninput=()=>{out.textContent=(+ctl.value).toFixed(2).replace(/\.?0+$/,'')};
+    let last=0;  // live-stream drags, throttled to ~150ms; onchange is the final send
+    ctl.oninput=()=>{out.textContent=(+ctl.value).toFixed(2).replace(/\.?0+$/,'');
+      const now=Date.now();if(now-last>=150){last=now;post(`/api/param?type=num&key=${sp.key}&v=${ctl.value}`)}};
     ctl.onchange=()=>post(`/api/param?type=num&key=${sp.key}&v=${ctl.value}`);
   }
   row.appendChild(ctl);if(out)row.appendChild(out);
@@ -221,13 +250,13 @@ function makeMod(sp){
   const shape=()=>{const md=sel.value;
     cStep.style.display=md==='walk'?'flex':'none';
     cRate.cap.textContent=md==='walk'?'steps/s':'units/s'};
-  const send=(refresh)=>{
+  const send=async(refresh)=>{
     const mode=sel.value;
-    if(mode==='off'){post('/api/param/mod?key='+sp.key+'&mode=off');fields.style.display='none';if(refresh)setTimeout(loadParams,150);return}
+    if(mode==='off'){await post('/api/param/mod?key='+sp.key+'&mode=off');fields.style.display='none';if(refresh)loadParams();return}
     fields.style.display='flex';shape();
     let q='/api/param/mod?key='+sp.key+'&mode='+mode;
     cols.forEach(c=>{if(c.inp.value!=='')q+='&'+c.inp.dataset.k+'='+c.inp.value});
-    post(q);if(refresh)setTimeout(loadParams,150);
+    await post(q);if(refresh)loadParams();
   };
   sel.onchange=()=>send(true);           // refresh to reflect server defaults / badge
   cols.forEach(c=>c.inp.onchange=()=>send(false));
@@ -275,11 +304,13 @@ async function loadPresets(){
       const m=document.createElement('span');m.className='plmeta';m.textContent=(+p.dwellSec)+'s · ★'+p.priority;row.appendChild(m);
     }else{
       const dw=document.createElement('input');dw.type='number';dw.min=1;dw.value=p.dwellSec;dw.title='Seconds this preset shows in the cycle';
-      dw.onchange=()=>post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&dwellSec='+dw.value);
+      dw.onchange=()=>{const v=Math.max(1,Math.round(+dw.value)||1);dw.value=v;post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&dwellSec='+v)};
       const pr=document.createElement('input');pr.type='number';pr.min=0;pr.max=5;pr.value=p.priority;pr.title='Shuffle priority 0-5 (5 = most often, 0 = never auto-plays)';
-      pr.onchange=()=>post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&priority='+pr.value);
+      pr.onchange=()=>{const v=Math.min(5,Math.max(0,Math.round(+pr.value)||0));pr.value=v;post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&priority='+v)};
       const ren=document.createElement('button');ren.className='plbtn';ren.textContent='✎';ren.title='Rename';
-      ren.onclick=async()=>{const nn=prompt('Rename "'+p.name+'" to:',p.name);if(!nn||!nn.trim()||nn.trim()===p.name)return;await fetch('/api/presets/rename?from='+encodeURIComponent(p.name)+'&to='+encodeURIComponent(nn.trim()),{method:'POST'});loadPresets()};
+      ren.onclick=async()=>{const nn=prompt('Rename "'+p.name+'" to:',p.name);if(!nn||!nn.trim()||nn.trim()===p.name)return;
+        if(presetNames.includes(nn.trim())){alert('A preset with that name already exists');return}
+        await post('/api/presets/rename?from='+encodeURIComponent(p.name)+'&to='+encodeURIComponent(nn.trim()));loadPresets()};
       const del=document.createElement('button');del.className='plbtn';del.textContent='✕';del.title='Delete';
       del.onclick=async()=>{if(confirm('Delete "'+p.name+'"?')){await post('/api/presets/delete?name='+encodeURIComponent(p.name));loadPresets()}};
       row.append(dw,pr,ren,del);
@@ -318,11 +349,12 @@ function markNow(){
     r.classList.toggle('now',plState.enabled&&r.dataset.name===plState.current);
   });
 }
-async function updatePlaylist(){
-  let s;try{s=await (await fetch('/api/status')).json()}catch(e){return}
-  plState=s.playlist||{};
+function drawPlaylist(){
   // Guests may pause but not skip, shuffle, or start the cycle.
   ['plPrev','plNext','plShuffle'].forEach(id=>{$(id).disabled=isGuest;$(id).style.opacity=isGuest?.4:1});
+  const noStart=isGuest&&!plState.enabled;  // ▶ would start the cycle — owner-only
+  $('plPlay').disabled=noStart;$('plPlay').style.opacity=noStart?.4:1;
+  $('plPlay').title=noStart?'Owners start the cycle; guests may pause':'Play/pause cycle';
   $('plPlay').textContent=plState.enabled?'⏸':'▶';
   $('plShuffle').style.background=plState.shuffle?'#2a5aa5':'#26262e';
   $('plStatus').textContent=plState.enabled
@@ -330,16 +362,18 @@ async function updatePlaylist(){
     :'Cycle paused';
   markNow();
 }
-$('plToggle').onclick=()=>{$('sidebar').classList.toggle('open');loadPresets();updatePlaylist()};
+$('plToggle').onclick=()=>{$('sidebar').classList.toggle('open');loadPresets();poll()};
 $('plClose').onclick=()=>$('sidebar').classList.remove('open');
+addEventListener('keydown',e=>{if(e.key==='Escape')$('sidebar').classList.remove('open')});
 $('plPlay').onclick=async()=>{
   if(!plState.enabled&&isGuest)return;  // guests may pause but not start
-  await post('/api/playlist?enabled='+(plState.enabled?0:1));updatePlaylist();
+  if(!plState.enabled&&!presetNames.length){toast('No presets to cycle yet');return}
+  await post('/api/playlist?enabled='+(plState.enabled?0:1));poll();
 };
-$('plShuffle').onclick=async()=>{if(isGuest)return;await post('/api/playlist?shuffle='+(plState.shuffle?0:1));updatePlaylist()};
-$('plNext').onclick=async()=>{if(isGuest)return;await post('/api/playlist/next');updatePlaylist();refresh()};
-$('plPrev').onclick=async()=>{if(isGuest)return;await post('/api/playlist/prev');updatePlaylist();refresh()};
-setInterval(updatePlaylist,1500);
+$('plShuffle').onclick=async()=>{if(isGuest)return;await post('/api/playlist?shuffle='+(plState.shuffle?0:1));poll()};
+$('plNext').onclick=async()=>{if(isGuest)return;await post('/api/playlist/next');refresh()};
+$('plPrev').onclick=async()=>{if(isGuest)return;await post('/api/playlist/prev');refresh()};
+setInterval(poll,1500);
 refresh();
 </script></body></html>)HTML";
 
@@ -404,6 +438,7 @@ const $=id=>document.getElementById(id);
 document.querySelectorAll('.pw button').forEach(b=>{
   b.onclick=()=>{const i=$(b.dataset.for);const show=i.type==='password';i.type=show?'text':'password';b.textContent=show?'hide':'show'};
 });
+const esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
 $('scan').onclick=async()=>{
   $('scan').textContent='Scanning…';$('scan').disabled=true;
   try{
@@ -411,7 +446,7 @@ $('scan').onclick=async()=>{
     const ul=$('nets');ul.innerHTML='';
     for(const n of nets){
       const li=document.createElement('li');
-      li.innerHTML=`${n.ssid}<span>${n.rssi}dBm${n.open?' · open':''}</span>`;
+      li.innerHTML=`${esc(n.ssid)}<span>${n.rssi}dBm${n.open?' · open':''}</span>`;
       li.onclick=()=>{$('ssid').value=n.ssid;$('pass').focus()};
       ul.appendChild(li);
     }
@@ -468,7 +503,10 @@ const char kSnakeHtml[] = R"HTML(<!doctype html>
   #cal .row{display:flex;gap:12px;margin-top:22px}
   #cal .row button{background:#1c1c24;border:1px solid #34343f;border-radius:10px;
        color:#bbb;font-size:13px;padding:9px 16px;cursor:pointer}
+  nav{display:flex;gap:14px;font-size:13px;margin-bottom:14px;align-self:flex-start}
+  nav a{color:#7ab0ff;text-decoration:none}
 </style></head><body>
+<nav><a href="/">&larr; Console</a></nav>
 <h1>cube-light · game pad</h1>
 <div class="pad">
   <span class="blank"></span><button data-b="up">▲</button><span class="blank"></span>

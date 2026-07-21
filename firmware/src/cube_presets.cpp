@@ -6,6 +6,15 @@ namespace cube {
 
 static bool mounted = false;
 
+// In-RAM metadata cache: presetList() would otherwise open + JSON-parse every
+// file, which the playlist does on EVERY advance and the UI polls — a visible
+// frame hitch at short dwells. Any write/delete invalidates it. Heap-allocated
+// lazily: as a static array it would cost ~1.6KB of the (overflowing) DRAM
+// static segment.
+static PresetMeta* s_cache = nullptr;
+static int s_cacheN = 0;
+static bool s_cacheDirty = true;
+
 // Map a display name to a filesystem-safe path. Distinct names that reduce to
 // the same slug collide (last save wins) — acceptable for this foundation;
 // the display name is preserved verbatim inside the file's "name" field.
@@ -37,21 +46,28 @@ void presetsBegin() {
 
 int presetList(PresetMeta* out, int max) {
   if (!mounted) return 0;
-  File dir = LittleFS.open("/presets");
-  if (!dir || !dir.isDirectory()) return 0;
-  int n = 0;
-  for (File f = dir.openNextFile(); f && n < max; f = dir.openNextFile()) {
-    JsonDocument doc;
-    if (!deserializeJson(doc, f)) {
-      out[n].name = doc["name"] | "";
-      out[n].pattern = doc["pattern"] | "";
-      out[n].priority = doc["priority"] | 3;
-      out[n].dwellSec = doc["dwellSec"] | 20.0f;
-      if (out[n].name.length()) n++;
+  if (!s_cache) s_cache = new PresetMeta[kMaxPresets];
+  if (s_cacheDirty) {
+    File dir = LittleFS.open("/presets");
+    if (!dir || !dir.isDirectory()) return 0;
+    s_cacheN = 0;
+    for (File f = dir.openNextFile(); f && s_cacheN < kMaxPresets;
+         f = dir.openNextFile()) {
+      JsonDocument doc;
+      if (!deserializeJson(doc, f)) {
+        s_cache[s_cacheN].name = doc["name"] | "";
+        s_cache[s_cacheN].pattern = doc["pattern"] | "";
+        s_cache[s_cacheN].priority = doc["priority"] | 3;
+        s_cache[s_cacheN].dwellSec = doc["dwellSec"] | 20.0f;
+        if (s_cache[s_cacheN].name.length()) s_cacheN++;
+      }
+      f.close();
     }
-    f.close();
+    dir.close();
+    s_cacheDirty = false;
   }
-  dir.close();
+  const int n = s_cacheN < max ? s_cacheN : max;
+  for (int i = 0; i < n; i++) out[i] = s_cache[i];
   return n;
 }
 
@@ -70,11 +86,13 @@ bool presetWrite(const String& name, const JsonDocument& doc) {
   if (!f) return false;
   const bool ok = serializeJson(doc, f) > 0;
   f.close();
+  s_cacheDirty = true;
   return ok;
 }
 
 bool presetDelete(const String& name) {
   if (!mounted) return false;
+  s_cacheDirty = true;
   return LittleFS.remove(pathFor(name));
 }
 

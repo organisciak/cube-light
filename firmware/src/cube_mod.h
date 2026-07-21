@@ -33,7 +33,8 @@ class ModStore {
     char key[Params::kKeyLen];
     uint8_t mode;
     float minV, maxV, rate, step;
-    float quant;  // spec step: written values snap to min + n*quant (0 = off)
+    float quant;   // spec step: written values snap to the spec grid (0 = off)
+    float anchor;  // spec minV — the grid origin quant snapping aligns to
     // runtime state (not persisted)
     float phase;      // pingpong triangle phase, 0..2 (0..1 up, 1..2 down)
     float value;      // walk current value
@@ -80,21 +81,27 @@ class ModStore {
   }
 
   // Register/update a mod for `key`. mode OFF removes it. `curVal` seeds the
-  // starting value/phase so enabling doesn't jump. `quant` (the param's spec
-  // step) makes written values snap to sensible increments — pass 0 to skip.
+  // starting value/phase so enabling doesn't jump. `quant`/`anchor` (spec
+  // step and spec min) make written values snap to the param's native grid.
+  // Callers are expected to clamp mn/mx to the spec range first.
   void set(const char* key, uint8_t mode, float mn, float mx, float rate,
-           float step, float curVal, float quant = 0) {
+           float step, float curVal, float quant = 0, float anchor = 0) {
     if (mode == OFF) {
       remove(key);
       return;
     }
+    if (mn > mx) {  // reject nonsense rather than pinning at a bound forever
+      float t = mn;
+      mn = mx;
+      mx = t;
+    }
     Entry* e = find(key);
+    const bool fresh = !e;
     if (!e) {
       if (count_ >= Params::kMax) return;
       e = &entries_[count_++];
       std::strncpy(e->key, key, Params::kKeyLen - 1);
       e->key[Params::kKeyLen - 1] = '\0';
-      e->started = false;
     }
     e->mode = mode;
     e->minV = mn;
@@ -102,16 +109,18 @@ class ModStore {
     e->rate = rate;
     e->step = step;
     e->quant = quant;
-    if (!e->started) {
-      float v = curVal;
-      if (v < mn) v = mn;
-      if (v > mx) v = mx;
-      e->value = v;
-      float range = mx - mn;
-      e->phase = range > 0 ? (v - mn) / range : 0.0f;  // upward leg
-      e->lastMs = millis();
-      e->started = true;
-    }
+    e->anchor = anchor;
+    // Seed (fresh) or re-fit (edited range) the runtime state so a narrowed
+    // range doesn't leave the value stranded outside [mn,mx] or the pingpong
+    // phase mapped onto the old span.
+    float v = fresh ? curVal : e->value;
+    if (v < mn) v = mn;
+    if (v > mx) v = mx;
+    e->value = v;
+    const float range = mx - mn;
+    e->phase = range > 0 ? (v - mn) / range : 0.0f;  // upward leg
+    if (fresh) e->lastMs = millis();
+    e->started = true;
   }
 
   void remove(const char* key) {
@@ -127,7 +136,9 @@ class ModStore {
   // "plane count" only ever lands on whole steps while the walk/scrub
   // underneath advances smoothly.
   static float snapped(const Entry& e, float v) {
-    if (e.quant > 0) v = e.minV + roundf((v - e.minV) / e.quant) * e.quant;
+    // Anchor at the SPEC min so snapped values land on the param's native
+    // grid (planes: 1,2,3...) even when the mod's min is off-grid (1.5).
+    if (e.quant > 0) v = e.anchor + roundf((v - e.anchor) / e.quant) * e.quant;
     if (v < e.minV) v = e.minV;
     if (v > e.maxV) v = e.maxV;
     return v;
@@ -154,7 +165,10 @@ class ModStore {
         const float tri = e.phase <= 1.0f ? e.phase : 2.0f - e.phase;
         params.setNum(e.key, snapped(e, e.minV + range * tri));
       } else if (e.mode == WALK) {
-        const float period = e.rate > 0 ? 1000.0f / e.rate : 1000.0f;
+        // Floor of 1ms: extreme rates would truncate the period to 0 and pin
+        // the catch-up loop at its 32-iteration guard every frame.
+        const float period =
+            e.rate > 0 ? fmaxf(1.0f, 1000.0f / e.rate) : 1000.0f;
         int guard = 0;
         while ((int32_t)(now - e.lastMs) >= (int32_t)period && guard++ < 32) {
           e.lastMs += (uint32_t)period;
