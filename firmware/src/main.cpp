@@ -34,6 +34,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <esp_random.h>
 
 #include "audio_capture.h"
 #include "cube_calibration.h"
@@ -402,6 +403,100 @@ bool loadPresetByName(const String& name) {
   return true;
 }
 
+// ---- playlist cycling (cube-eq5.2 / cube-eq5.3) -------------------------------
+//
+// Auto-cycles through the saved presets, each shown for its own dwellSec. The
+// order is the preset store's listing order. Shuffle picks the next preset by
+// weighted random on priority (weight = priority, linear: a priority-5 preset
+// is 5x as likely as priority-1); priority 0 is EXCLUDED from shuffle rotation
+// entirely (kept/saved but never auto-played). In-order cycling walks the
+// whole list including priority-0 presets — priority only affects shuffle.
+// RNG is esp_random() (hardware; no seeding, on-device visual choice).
+
+struct PlaylistState {
+  bool enabled = false;
+  bool shuffle = false;
+  String current;         // name of the preset currently showing
+  uint32_t startedMs = 0;  // millis() when it began
+  float dwellSec = 20;     // dwell of the current preset
+};
+PlaylistState playlist;
+// Set while the playlist engine itself loads a preset, so the auto-pause hook
+// (which fires on manual pattern/param/preset changes) doesn't stop the cycle.
+bool playlistLoading = false;
+
+// Manual pattern/param/preset change stops the cycle so tinkering isn't stomped.
+void pausePlaylistForManual() {
+  if (!playlistLoading) playlist.enabled = false;
+}
+
+void playlistLoadIndex(const PresetMeta* metas, int i) {
+  playlistLoading = true;
+  loadPresetByName(metas[i].name);
+  playlistLoading = false;
+  playlist.current = metas[i].name;
+  playlist.dwellSec = metas[i].dwellSec > 0 ? metas[i].dwellSec : 20.0f;
+  playlist.startedMs = millis();
+}
+
+// Shuffle pick: weighted by priority, priority-0 excluded, avoiding an
+// immediate repeat when another eligible preset exists. Returns -1 if nothing
+// is eligible (every preset is priority 0).
+int playlistPickWeighted(const PresetMeta* metas, int n, const String& avoid) {
+  int elExAvoid = 0;
+  for (int i = 0; i < n; i++)
+    if (metas[i].priority > 0 && metas[i].name != avoid) elExAvoid++;
+  const bool skipAvoid = elExAvoid > 0;  // only avoid repeat when alternatives exist
+  int total = 0;
+  for (int i = 0; i < n; i++) {
+    if (metas[i].priority <= 0) continue;
+    if (skipAvoid && metas[i].name == avoid) continue;
+    total += metas[i].priority;
+  }
+  if (total <= 0) return -1;
+  int r = (int)(esp_random() % (uint32_t)total);
+  for (int i = 0; i < n; i++) {
+    if (metas[i].priority <= 0) continue;
+    if (skipAvoid && metas[i].name == avoid) continue;
+    r -= metas[i].priority;
+    if (r < 0) return i;
+  }
+  return -1;
+}
+
+// Advance to the next preset. dir = +1 next / -1 prev (in-order only; shuffle
+// always re-picks at random regardless of dir sign). Disables the playlist if
+// the store is empty or nothing is eligible for shuffle.
+void playlistAdvance(int dir) {
+  PresetMeta metas[kMaxPresets];
+  const int n = presetList(metas, kMaxPresets);
+  if (n == 0) {
+    playlist.enabled = false;
+    return;
+  }
+  int pick;
+  if (playlist.shuffle) {
+    pick = playlistPickWeighted(metas, n, playlist.current);
+    if (pick < 0) {  // all priority 0 -> nothing to auto-play
+      playlist.enabled = false;
+      return;
+    }
+  } else {
+    int cur = -1;
+    for (int i = 0; i < n; i++)
+      if (metas[i].name == playlist.current) { cur = i; break; }
+    pick = cur < 0 ? 0 : (((cur + dir) % n) + n) % n;
+  }
+  playlistLoadIndex(metas, pick);
+}
+
+// Called every loop: when a preset's dwell elapses, roll to the next.
+void playlistTick() {
+  if (!playlist.enabled) return;
+  if ((millis() - playlist.startedMs) / 1000.0f < playlist.dwellSec) return;
+  playlistAdvance(+1);
+}
+
 // ---- DNRGB live override ------------------------------------------------------
 
 WiFiUDP udp;
@@ -623,6 +718,17 @@ void handleStatus() {
           ",\"flipY\":" + String(settings.layout.flipY ? "true" : "false") +
           ",\"flipZ\":" + String(settings.layout.flipZ ? "true" : "false") +
           ",\"ledOffset\":" + String(settings.layout.ledOffset) + "}";
+  float dwellRem = 0;
+  if (playlist.enabled) {
+    dwellRem = playlist.dwellSec - (millis() - playlist.startedMs) / 1000.0f;
+    if (dwellRem < 0) dwellRem = 0;
+  }
+  String plCur = playlist.current;
+  plCur.replace("\\", "\\\\");
+  plCur.replace("\"", "\\\"");
+  json += ",\"playlist\":{\"enabled\":" + String(playlist.enabled ? "true" : "false") +
+          ",\"shuffle\":" + String(playlist.shuffle ? "true" : "false") +
+          ",\"current\":\"" + plCur + "\",\"dwellRemainingSec\":" + String(dwellRem, 0) + "}";
   json += ",\"version\":\"" CUBE_VERSION "\"}";
   server.send(200, "application/json", json);
 }
@@ -656,6 +762,7 @@ void setupWebServer() {
     handleStatus();
   });
   server.on("/api/pattern", HTTP_POST, []() {
+    pausePlaylistForManual();  // manual pick stops the cycle
     setPatternById(server.arg("id"));
     server.send(200, "text/plain", "ok");
   });
@@ -825,6 +932,7 @@ void setupWebServer() {
   });
   // Apply a preset (changes the live pattern) — allowed for guests.
   server.on("/api/presets/load", HTTP_POST, []() {
+    pausePlaylistForManual();  // loading a single preset stops the cycle
     if (!loadPresetByName(server.arg("name"))) {
       server.send(404, "text/plain", "no such preset");
       return;
@@ -836,6 +944,68 @@ void setupWebServer() {
     if (guestBlocked()) return;
     if (!authed()) return;
     presetDelete(server.arg("name"));
+    server.send(200, "text/plain", "ok");
+  });
+  // Edit just a preset's playlist metadata (dwellSec/priority) without
+  // re-snapshotting its params. Read-modify-write. Owner-only.
+  server.on("/api/presets/meta", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    const String name = server.arg("name");
+    JsonDocument doc;
+    if (!presetRead(name, doc)) {
+      server.send(404, "text/plain", "no such preset");
+      return;
+    }
+    if (server.hasArg("priority"))
+      doc["priority"] = constrain((int)server.arg("priority").toInt(), 0, 5);
+    if (server.hasArg("dwellSec")) doc["dwellSec"] = server.arg("dwellSec").toFloat();
+    presetWrite(name, doc);
+    // Reflect a new dwell on the live preset immediately.
+    if (playlist.enabled && playlist.current == name && server.hasArg("dwellSec"))
+      playlist.dwellSec = server.arg("dwellSec").toFloat();
+    server.send(200, "text/plain", "ok");
+  });
+  // ---- playlist cycling ----
+  // Configure/toggle the cycle. Owner-only, EXCEPT a guest may pause
+  // (enabled=0) so a party-goer can stop the rotation on a pattern they like.
+  server.on("/api/playlist", HTTP_POST, []() {
+    if (isGuestRequest()) {
+      if (server.arg("enabled") == "0") {
+        playlist.enabled = false;
+        server.send(200, "text/plain", "ok");
+      } else {
+        guestBlocked();  // sends the 403
+      }
+      return;
+    }
+    if (!authed()) return;
+    if (server.hasArg("shuffle")) playlist.shuffle = server.arg("shuffle") == "1";
+    if (server.hasArg("enabled")) {
+      const bool en = server.arg("enabled") == "1";
+      if (en && !playlist.enabled) {
+        playlist.enabled = true;
+        playlist.current = "";
+        playlistAdvance(+1);  // load the first preset now
+      } else {
+        playlist.enabled = en;
+      }
+    }
+    server.send(200, "text/plain", "ok");
+  });
+  // Manual skip (owner-only). Enables the cycle if it was off.
+  server.on("/api/playlist/next", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    if (!playlist.enabled) { playlist.enabled = true; }
+    playlistAdvance(+1);
+    server.send(200, "text/plain", "ok");
+  });
+  server.on("/api/playlist/prev", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    if (!playlist.enabled) { playlist.enabled = true; }
+    playlistAdvance(-1);
     server.send(200, "text/plain", "ok");
   });
   // Runtime LED hardware config: pins + single/dual split. Applies live
@@ -899,6 +1069,7 @@ void setupWebServer() {
   // Set a live pattern parameter (not persisted). Used by the calibration
   // page to steer lit-pixel, and handy for tweaking any pattern.
   server.on("/api/param", HTTP_POST, []() {
+    pausePlaylistForManual();  // manual tweak stops the cycle
     const String key = server.arg("key");
     const String v = server.arg("v");
     const String type = server.arg("type");
@@ -1047,6 +1218,7 @@ void loop() {
   server.handleClient();
   handleRealtime();
   handleButton();
+  playlistTick();
 
   static uint32_t nextFrameMs = 0;
   const uint32_t now = millis();

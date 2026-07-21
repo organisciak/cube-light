@@ -31,6 +31,21 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
   .meter div{height:100%;background:#2a5aa5;width:0%}
   button{padding:8px 12px;border-radius:6px;border:none;background:#26262e;color:#ccc;font-size:13px;cursor:pointer}
   button.pri{background:#2a5aa5;color:#fff}
+  #plToggle{position:fixed;right:14px;bottom:14px;z-index:20;background:#2a5aa5;color:#fff;padding:10px 14px;border-radius:20px;box-shadow:0 2px 10px #0008}
+  #sidebar{position:fixed;top:0;right:0;bottom:0;width:290px;max-width:86vw;background:#141419;border-left:1px solid #2a2a33;box-shadow:-4px 0 18px #0009;z-index:30;transform:translateX(105%);transition:transform .22s ease;display:flex;flex-direction:column;padding:16px;box-sizing:border-box}
+  #sidebar.open{transform:none}
+  .plhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .plhead b{font-size:15px;color:#eee}
+  #plStatus{font-size:12px;color:#8fb8ff;min-height:16px;margin:2px 0 10px}
+  .plctrls{display:flex;gap:6px;margin-bottom:12px}
+  .plctrls button{flex:1;font-size:16px;padding:8px 0}
+  #plRows{overflow-y:auto;flex:1}
+  .plrow{display:flex;gap:6px;align-items:center;padding:7px 6px;border-radius:6px;margin-bottom:3px;background:#1a1a20}
+  .plrow.now{background:#1e3352;outline:1px solid #3a6bb0}
+  .plname{flex:1;font-size:13px;color:#ddd;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .plmeta{font-size:11px;color:#888;white-space:nowrap}
+  .pldwell{width:46px;flex:0 0 auto;padding:4px;font-size:12px}
+  .plpri{width:40px;flex:0 0 auto;padding:4px;font-size:12px}
 </style></head><body>
 <nav><b>Console</b><a href="/snake">Game pad</a><a href="/admin" id="adminLink">Admin 🔒</a></nav>
 <h1>cube-light</h1>
@@ -62,6 +77,19 @@ pattern below won't show until it stops.</div>
 </details>
 
 <button class="pri" id="guestReset" style="display:none;width:100%;padding:12px;margin-top:18px">Alright, broken it in enough? Set it back →</button>
+
+<button id="plToggle">☰ Playlist</button>
+<div id="sidebar">
+  <div class="plhead"><b>Playlist</b><button id="plClose">✕</button></div>
+  <div id="plStatus">Cycle paused</div>
+  <div class="plctrls">
+    <button id="plPrev" title="Previous">⏮</button>
+    <button id="plPlay" title="Play/pause cycle">▶</button>
+    <button id="plNext" title="Next">⏭</button>
+    <button id="plShuffle" title="Shuffle (priority-weighted)">🔀</button>
+  </div>
+  <div id="plRows"></div>
+</div>
 
 <div class="stat" id="stat"></div>
 <script>
@@ -170,12 +198,63 @@ async function loadPresets(){
     box.appendChild(row);
   }
   $('presetSave').style.display=isGuest?'none':'flex';
+  renderPlRows(list);
 }
 $('presetSaveBtn').onclick=async()=>{
   const n=$('presetName').value.trim();if(!n)return;
   await post('/api/presets/save?name='+encodeURIComponent(n));
   $('presetName').value='';loadPresets();
 };
+// ---- playlist sidebar ----
+let plState={};
+function renderPlRows(list){
+  const box=$('plRows');box.innerHTML='';
+  if(!list.length){box.innerHTML='<div style="font-size:12px;color:#777">No presets to cycle yet.</div>';return}
+  for(const p of list){
+    const row=document.createElement('div');row.className='plrow';row.dataset.name=p.name;
+    const nm=document.createElement('span');nm.className='plname';nm.textContent=p.name;nm.title=p.pattern;
+    nm.onclick=async()=>{await post('/api/presets/load?name='+encodeURIComponent(p.name));refresh()};
+    row.appendChild(nm);
+    if(isGuest){
+      const m=document.createElement('span');m.className='plmeta';m.textContent=(+p.dwellSec)+'s · ★'+p.priority;row.appendChild(m);
+    }else{
+      const dw=document.createElement('input');dw.type='number';dw.min=1;dw.className='pldwell';dw.value=p.dwellSec;dw.title='Dwell seconds';
+      dw.onchange=()=>post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&dwellSec='+dw.value);
+      const pr=document.createElement('input');pr.type='number';pr.min=0;pr.max=5;pr.className='plpri';pr.value=p.priority;pr.title='Priority 0-5 (0 = never auto-plays in shuffle)';
+      pr.onchange=()=>post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&priority='+pr.value);
+      row.appendChild(dw);row.appendChild(pr);
+    }
+    box.appendChild(row);
+  }
+  markNow();
+}
+function markNow(){
+  document.querySelectorAll('.plrow').forEach(r=>{
+    r.classList.toggle('now',plState.enabled&&r.dataset.name===plState.current);
+  });
+}
+async function updatePlaylist(){
+  let s;try{s=await (await fetch('/api/status')).json()}catch(e){return}
+  plState=s.playlist||{};
+  // Guests may pause but not skip, shuffle, or start the cycle.
+  ['plPrev','plNext','plShuffle'].forEach(id=>{$(id).disabled=isGuest;$(id).style.opacity=isGuest?.4:1});
+  $('plPlay').textContent=plState.enabled?'⏸':'▶';
+  $('plShuffle').style.background=plState.shuffle?'#2a5aa5':'#26262e';
+  $('plStatus').textContent=plState.enabled
+    ?('Now: '+(plState.current||'—')+' · '+Math.max(0,Math.round(plState.dwellRemainingSec))+'s left')
+    :'Cycle paused';
+  markNow();
+}
+$('plToggle').onclick=()=>{$('sidebar').classList.toggle('open');updatePlaylist()};
+$('plClose').onclick=()=>$('sidebar').classList.remove('open');
+$('plPlay').onclick=async()=>{
+  if(!plState.enabled&&isGuest)return;  // guests may pause but not start
+  await post('/api/playlist?enabled='+(plState.enabled?0:1));updatePlaylist();
+};
+$('plShuffle').onclick=async()=>{if(isGuest)return;await post('/api/playlist?shuffle='+(plState.shuffle?0:1));updatePlaylist()};
+$('plNext').onclick=async()=>{if(isGuest)return;await post('/api/playlist/next');updatePlaylist();refresh()};
+$('plPrev').onclick=async()=>{if(isGuest)return;await post('/api/playlist/prev');updatePlaylist();refresh()};
+setInterval(updatePlaylist,1500);
 refresh();
 </script></body></html>)HTML";
 
