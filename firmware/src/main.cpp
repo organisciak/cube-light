@@ -38,6 +38,7 @@
 
 #include "audio_capture.h"
 #include "cube_calibration.h"
+#include "cube_mod.h"
 #include "cube_pacman.h"
 #include "cube_palettes.h"
 #include "cube_param_specs.h"
@@ -249,6 +250,7 @@ void applyGeometry() {
 }
 
 Params params;
+ModStore mods;  // per-param automatic modulation (cube-la3), current pattern only
 AudioFrame audio;  // refreshed each frame from the mic capture task
 uint8_t frame[NUM_LEDS * 3];
 const Pattern* activePattern = nullptr;
@@ -325,6 +327,61 @@ void savePatternParams(int idx) {
   prefs.end();
 }
 
+// Modulation configs live in NVS beside the param overrides, one blob per
+// pattern, keyed "pm<id13>". Lines are "key=mode,min,max,rate,step".
+String modKeyFor(int idx) {
+  return "pm" + String(kPatterns[idx]->id).substring(0, 13);
+}
+
+void loadPatternMods(int idx) {
+  mods.clear();
+  prefs.begin("cube", true);
+  const String blob = prefs.getString(modKeyFor(idx).c_str(), "");
+  prefs.end();
+  if (blob.length() == 0) return;
+  int pos = 0;
+  while (pos < (int)blob.length()) {
+    int nl = blob.indexOf('\n', pos);
+    if (nl < 0) nl = blob.length();
+    const String line = blob.substring(pos, nl);
+    pos = nl + 1;
+    const int eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const String key = line.substring(0, eq);
+    const String v = line.substring(eq + 1);
+    const int c1 = v.indexOf(',');
+    const int c2 = c1 < 0 ? -1 : v.indexOf(',', c1 + 1);
+    const int c3 = c2 < 0 ? -1 : v.indexOf(',', c2 + 1);
+    const int c4 = c3 < 0 ? -1 : v.indexOf(',', c3 + 1);
+    if (c4 < 0) continue;
+    const uint8_t mode = ModStore::modeFromName(v.substring(0, c1).c_str());
+    if (mode == ModStore::OFF) continue;
+    const float mn = v.substring(c1 + 1, c2).toFloat();
+    const float mx = v.substring(c2 + 1, c3).toFloat();
+    const float rate = v.substring(c3 + 1, c4).toFloat();
+    const float step = v.substring(c4 + 1).toFloat();
+    mods.set(key.c_str(), mode, mn, mx, rate, step, params.num(key.c_str(), mn));
+  }
+}
+
+void savePatternMods(int idx) {
+  String blob;
+  for (int i = 0; i < mods.count(); i++) {
+    const ModStore::Entry* e = mods.at(i);
+    blob += e->key;
+    blob += '=';
+    blob += ModStore::modeName(e->mode);
+    blob += ',' + String(e->minV, 4) + ',' + String(e->maxV, 4) + ',' +
+            String(e->rate, 4) + ',' + String(e->step, 4) + '\n';
+  }
+  prefs.begin("cube", false);
+  if (blob.length())
+    prefs.putString(modKeyFor(idx).c_str(), blob);
+  else
+    prefs.remove(modKeyFor(idx).c_str());
+  prefs.end();
+}
+
 void setPatternByIndex(int i) {
   activePatternIdx = ((i % kPatternCount) + kPatternCount) % kPatternCount;
   activePattern = kPatterns[activePatternIdx];
@@ -334,6 +391,7 @@ void setPatternByIndex(int i) {
   ctx.dt = 0;
   params.clear();
   loadPatternParams(activePatternIdx);
+  loadPatternMods(activePatternIdx);
   if (activePattern->init) activePattern->init(ctx);
   settings.patternId = activePattern->id;
   saveSetting("pattern", settings.patternId);
@@ -376,6 +434,19 @@ void savePresetSnapshot(const String& name, int priority, float dwellSec) {
       }
     }
   }
+  // Carry any active per-param modulation with the preset.
+  if (mods.count() > 0) {
+    JsonObject m = doc["mods"].to<JsonObject>();
+    for (int i = 0; i < mods.count(); i++) {
+      const ModStore::Entry* e = mods.at(i);
+      JsonObject o = m[e->key].to<JsonObject>();
+      o["mode"] = ModStore::modeName(e->mode);
+      o["min"] = e->minV;
+      o["max"] = e->maxV;
+      o["rate"] = e->rate;
+      o["step"] = e->step;
+    }
+  }
   presetWrite(name, doc);
 }
 
@@ -397,6 +468,25 @@ bool loadPresetByName(const String& name) {
         case 4: params.setStr(sp.key, p[sp.key].as<const char*>()); break;
         default: params.setNum(sp.key, p[sp.key].as<float>()); break;
       }
+    }
+  }
+  // If the preset carries modulation, it replaces whatever setPatternById
+  // loaded from NVS. Only numeric params can be modulated.
+  JsonObject m = doc["mods"].as<JsonObject>();
+  if (!m.isNull()) {
+    mods.clear();
+    for (JsonPair kv : m) {
+      const ParamSpec* mp = nullptr;
+      if (ps)
+        for (int i = 0; i < ps->count; i++)
+          if (!strcmp(ps->specs[i].key, kv.key().c_str())) { mp = &ps->specs[i]; break; }
+      if (!mp || mp->type != 0) continue;
+      JsonObject o = kv.value().as<JsonObject>();
+      const uint8_t mode = ModStore::modeFromName(o["mode"] | "off");
+      if (mode == ModStore::OFF) continue;
+      mods.set(kv.key().c_str(), mode, o["min"] | mp->minV, o["max"] | mp->maxV,
+               o["rate"] | 1.0f, o["step"] | mp->stepV,
+               params.num(kv.key().c_str(), mp->defNum));
     }
   }
   if (activePattern && activePattern->init) activePattern->init(ctx);
@@ -857,7 +947,14 @@ void setupWebServer() {
                         : (sp.type == 0 ? String(sp.defNum, 3)
                            : sp.type == 1 ? String(sp.defNum != 0 ? "1" : "0")
                                           : String(sp.defStr))) +
-              "\"}";
+              "\"";
+      // Active-pattern numeric params carry their modulation config, if any.
+      const ModStore::Entry* me = isActive ? mods.find(sp.key) : nullptr;
+      if (me)
+        json += ",\"mod\":{\"mode\":\"" + String(ModStore::modeName(me->mode)) +
+                "\",\"min\":" + String(me->minV, 3) + ",\"max\":" + String(me->maxV, 3) +
+                ",\"rate\":" + String(me->rate, 3) + ",\"step\":" + String(me->step, 3) + "}";
+      json += "}";
     }
     json += "]}";
     server.send(200, "application/json", json);
@@ -867,6 +964,7 @@ void setupWebServer() {
     if (guestBlocked()) return;
     if (!authed()) return;
     savePatternParams(activePatternIdx);
+    savePatternMods(activePatternIdx);
     server.send(200, "text/plain", "ok");
   });
   // Guest-tier master toggle for audio reactivity: off = patterns see
@@ -883,6 +981,7 @@ void setupWebServer() {
   server.on("/api/params/reset", HTTP_POST, []() {
     params.clear();
     loadPatternParams(activePatternIdx);
+    loadPatternMods(activePatternIdx);
     if (activePattern->init) activePattern->init(ctx);
     server.send(200, "text/plain", "ok");
   });
@@ -892,8 +991,10 @@ void setupWebServer() {
     if (!authed()) return;
     prefs.begin("cube", false);
     prefs.remove(paramsKeyFor(activePatternIdx).c_str());
+    prefs.remove(modKeyFor(activePatternIdx).c_str());
     prefs.end();
     params.clear();
+    mods.clear();
     if (activePattern->init) activePattern->init(ctx);
     server.send(200, "text/plain", "ok");
   });
@@ -1187,6 +1288,44 @@ void setupWebServer() {
     else params.setNum(key.c_str(), v.toFloat());
     server.send(200, "text/plain", "ok");
   });
+  // Configure automatic modulation for one NUMERIC param of the active pattern
+  // (cube-la3). mode=off clears it. Omitted min/max/rate/step default from the
+  // param's spec. Owner-only. See cube_mod.h for the pingpong/walk math.
+  server.on("/api/param/mod", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    pausePlaylistForManual();
+    const String key = server.arg("key");
+    if (key.length() == 0) {
+      server.send(400, "text/plain", "key required");
+      return;
+    }
+    const uint8_t mode = ModStore::modeFromName(server.arg("mode").c_str());
+    if (mode == ModStore::OFF) {
+      mods.remove(key.c_str());
+      server.send(200, "text/plain", "ok");
+      return;
+    }
+    // Modulation is numeric-only: find the spec and reject non-number params.
+    const PatternSpecs* ps = specsFor(settings.patternId.c_str());
+    const ParamSpec* sp = nullptr;
+    if (ps)
+      for (int i = 0; i < ps->count; i++)
+        if (key == ps->specs[i].key) { sp = &ps->specs[i]; break; }
+    if (!sp || sp->type != 0) {
+      server.send(400, "text/plain", "not a numeric param");
+      return;
+    }
+    float mn, mx, rate, step;
+    ModStore::defaults(*sp, mode, mn, mx, rate, step);
+    if (server.hasArg("min")) mn = server.arg("min").toFloat();
+    if (server.hasArg("max")) mx = server.arg("max").toFloat();
+    if (server.hasArg("rate")) rate = server.arg("rate").toFloat();
+    if (server.hasArg("step")) step = server.arg("step").toFloat();
+    mods.set(key.c_str(), mode, mn, mx, rate, step,
+             params.num(key.c_str(), sp->defNum));
+    server.send(200, "text/plain", "ok");
+  });
   // Body: text lines "led,x,y,z". Returns candidates/suggestion as JSON.
   server.on("/api/calibrate/solve", HTTP_POST, []() {
     if (!authed()) return;
@@ -1348,6 +1487,7 @@ void loop() {
   ctx.t = t;
   ctx.dt = t - lastT;
   lastT = t;
+  mods.tick(params, now);  // drift any modulated params before render sees them
   activePattern->render(ctx);
   show(frame);
 }

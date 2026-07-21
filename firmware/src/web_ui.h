@@ -22,11 +22,18 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
   nav b{color:#eee}
   details{margin-top:22px;border-top:1px solid #222;padding-top:8px}
   summary{font-size:14px;color:#bbb;cursor:pointer;padding:6px 0}
-  .prow{display:flex;gap:10px;align-items:center;margin:10px 0}
+  .prow{display:flex;gap:10px;align-items:center;margin:10px 0;flex-wrap:wrap}
   .prow label{flex:0 0 46%;margin:0}
   .prow input[type=range]{flex:1}
   .prow select,.prow input[type=text]{flex:1}
   .prow output{min-width:44px;text-align:right;font-size:12px;color:#aaa}
+  .prow.modded>label{color:#c99bff}
+  #advTogWrap{display:none;align-items:center;gap:8px;font-size:12px;color:#c99bff;margin:6px 0 2px;cursor:pointer}
+  #advTogWrap input{width:auto}
+  .modwrap{flex-basis:100%;display:flex;gap:6px;align-items:center;margin:2px 0 4px;padding-left:6px;border-left:2px solid #43324f}
+  .modwrap select{flex:0 0 92px;font-size:12px;padding:4px}
+  .modfields{display:flex;gap:4px;flex:1}
+  .modf{width:100%;min-width:0;box-sizing:border-box;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:4px;font-size:12px}
   .meter{height:10px;background:#1a1a20;border-radius:5px;overflow:hidden;flex:1}
   .meter div{height:100%;background:#2a5aa5;width:0%}
   button{padding:8px 12px;border-radius:6px;border:none;background:#26262e;color:#ccc;font-size:13px;cursor:pointer}
@@ -62,6 +69,7 @@ pattern below won't show until it stops.</div>
 <button id="micToggle" style="width:100%;padding:10px;font-size:15px"></button>
 
 <details open id="paramsBox"><summary>Pattern parameters</summary>
+<label id="advTogWrap"><input type="checkbox" id="advTog"> ⚙ Advanced — auto-modulate params (∿)</label>
 <div id="params"></div>
 <div class="prow">
   <button id="resetParams">Reset to defaults</button>
@@ -106,6 +114,7 @@ async function refresh(){
   sel.value=s.pattern;
   micOn=s.micOn; drawMic();
   isGuest=!!s.guest;
+  $('advTogWrap').style.display=isGuest?'none':'flex';  // modulation is owner-only
   $('liveBanner').style.display=s.live?'block':'none';
   // Guests (on the cube's own hotspot) can tinker but not clobber saved
   // settings — hide the admin door, offer a friendly "set it back" button.
@@ -120,6 +129,9 @@ async function refresh(){
 }
 let micOn=true;
 let isGuest=false;
+let advanced=localStorage.getItem('cube-adv')==='1';
+$('advTog').checked=advanced;
+$('advTog').onchange=()=>{advanced=$('advTog').checked;localStorage.setItem('cube-adv',advanced?'1':'0');loadParams()};
 function drawMic(){
   const b=$('micToggle');
   b.textContent=micOn?'🎤 ON — sound drives the patterns':'🔇 OFF — patterns ignore sound';
@@ -140,7 +152,11 @@ function makeRow(sp,d,group){
   const row=document.createElement('div');row.className='prow';
   // Audio-group params drive another param — audio can push it past the max.
   if(group==='Audio')row.title='Audio can push this parameter beyond the slider maximum (up to ~2x by default).';
-  const lab=document.createElement('label');lab.textContent=sp.label;row.appendChild(lab);
+  const modActive=sp.mod&&sp.mod.mode&&sp.mod.mode!=='off';
+  const lab=document.createElement('label');
+  lab.textContent=(modActive?'∿ ':'')+sp.label;
+  if(modActive)row.classList.add('modded');
+  row.appendChild(lab);
   let ctl,out=null;
   if(sp.type===T.BOOL){
     ctl=document.createElement('input');ctl.type='checkbox';ctl.checked=sp.value==='1';
@@ -162,7 +178,36 @@ function makeRow(sp,d,group){
     ctl.onchange=()=>post(`/api/param?type=num&key=${sp.key}&v=${ctl.value}`);
   }
   row.appendChild(ctl);if(out)row.appendChild(out);
+  // Advanced (owner-only): numeric params get an auto-modulation control.
+  if(advanced&&!isGuest&&sp.type===T.NUM)row.appendChild(makeMod(sp));
   return row;
+}
+// Compact per-param modulation control: mode selector + min/max/rate/step.
+// Empty numeric fields let the server fill spec-based defaults.
+function makeMod(sp){
+  const wrap=document.createElement('div');wrap.className='modwrap';
+  const sel=document.createElement('select');
+  [['off','off'],['pingpong','ping-pong'],['walk','walk']].forEach(([v,t])=>{
+    const o=document.createElement('option');o.value=v;o.textContent=t;sel.appendChild(o)});
+  sel.value=sp.mod?sp.mod.mode:'off';
+  const fields=document.createElement('div');fields.className='modfields';
+  const inp=(k,val)=>{const i=document.createElement('input');i.type='number';i.className='modf';i.dataset.k=k;i.title=k;i.placeholder=k;if(val!==undefined&&val!=='')i.value=val;return i};
+  const m=sp.mod||{};
+  const fMin=inp('min',m.min),fMax=inp('max',m.max),fRate=inp('rate',m.rate),fStep=inp('step',m.step);
+  fields.append(fMin,fMax,fRate,fStep);
+  const send=(refresh)=>{
+    const mode=sel.value;
+    if(mode==='off'){post('/api/param/mod?key='+sp.key+'&mode=off');fields.style.display='none';if(refresh)setTimeout(loadParams,150);return}
+    fields.style.display='flex';
+    let q='/api/param/mod?key='+sp.key+'&mode='+mode;
+    [fMin,fMax,fRate,fStep].forEach(f=>{if(f.value!=='')q+='&'+f.dataset.k+'='+f.value});
+    post(q);if(refresh)setTimeout(loadParams,150);
+  };
+  sel.onchange=()=>send(true);           // refresh to reflect server defaults / badge
+  fields.querySelectorAll('input').forEach(f=>f.onchange=()=>send(false));
+  fields.style.display=sel.value==='off'?'none':'flex';
+  wrap.append(sel,fields);
+  return wrap;
 }
 async function loadParams(){
   const d=await (await fetch('/api/params')).json();
