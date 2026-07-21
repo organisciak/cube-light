@@ -44,6 +44,12 @@ between the ESP32 build (`platformio.ini`) and a native host harness
 See `firmware/README.md` and `docs/on-chip-plan.md`. When porting a TS
 pattern, keep the C++ line-for-line faithful to `src/shared/patterns/`.
 
+Pattern param specs (`firmware/lib/core/cube_param_specs.h`) are now
+**hand-maintained and authoritative** — edit that header directly. It was once
+generated from the TS patterns by `scripts/gen-param-specs.mts`, but the TS side
+is deprecated and that generator is **retired**; do not re-run it (it would
+clobber firmware-only params such as the spiral `cycle` axis).
+
 ## Layout calibration
 
 The mapping from `(x, y, z)` to LED index depends on how the strings are wired.

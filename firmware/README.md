@@ -66,6 +66,15 @@ calibrated layout when that matters).
 
 Ported so far: `wavy-sheet`, `plasma`, `rotating-planes`, `solid`.
 
+### Pattern param specs
+
+`lib/core/cube_param_specs.h` (parameter names/types/ranges/defaults for the
+web UI) is now **hand-maintained and authoritative** — edit it directly when
+adding or changing a pattern's params. It was originally generated from the TS
+patterns by `scripts/gen-param-specs.mts`, but the TS side is deprecated and
+that generator is **retired**: do not re-run it, as it would clobber
+firmware-only params (e.g. the spiral `cycle` axis).
+
 ## Hardware gotchas (learned the hard way)
 
 - **Arduino core 2.x WiFi crash-loop on mesh networks.** The stock PlatformIO

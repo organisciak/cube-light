@@ -516,6 +516,30 @@ bool authed() {
   return false;
 }
 
+// A "guest" is anyone connected to the cube's own SoftAP (typically the
+// 192.168.4.x subnet) — a party-goer with a phone. Clients reaching us over
+// STA / the home LAN are the owner. We decide by comparing the requester's
+// IP against the SoftAP network, so it needs no password and can't be
+// spoofed by the UI. When no AP is up (clean STA), there are no guests.
+bool isGuestRequest() {
+  if (WiFi.getMode() == WIFI_STA) return false;
+  const IPAddress ap = WiFi.softAPIP();
+  const IPAddress cl = server.client().remoteIP();
+  return cl[0] == ap[0] && cl[1] == ap[1] && cl[2] == ap[2];
+}
+
+// Reject owner-only actions from guests with a friendly 403. Returns true if
+// the request was blocked (caller should return immediately).
+bool guestBlocked() {
+  if (isGuestRequest()) {
+    server.send(403, "text/plain",
+                "That's owner-only. Guests can play with patterns and knobs — "
+                "and hit the reset button — but can't change saved settings.");
+    return true;
+  }
+  return false;
+}
+
 void handleStatus() {
   String json = "{\"pattern\":\"" + settings.patternId + "\",\"patterns\":[";
   for (int i = 0; i < kPatternCount; i++) {
@@ -535,6 +559,7 @@ void handleStatus() {
   json += ",\"fps\":" + String(CUBE_FPS);
   json += ",\"uptimeS\":" + String(millis() / 1000);
   json += ",\"micOn\":" + String(settings.micEnabled ? "true" : "false");
+  json += ",\"guest\":" + String(isGuestRequest() ? "true" : "false");
   json += ",\"live\":" + String(millis() < liveUntilMs ? "true" : "false");
   json += ",\"up\":\"" + settings.upAxis + "\"";
   json += ",\"ledPin\":" + String(settings.ledPin) + ",\"ledPin2\":" + String(settings.ledPin2) +
@@ -677,6 +702,7 @@ void setupWebServer() {
   });
   // Persist the active pattern's current params as its power-on defaults.
   server.on("/api/params/save", HTTP_POST, []() {
+    if (guestBlocked()) return;
     if (!authed()) return;
     savePatternParams(activePatternIdx);
     server.send(200, "text/plain", "ok");
@@ -700,6 +726,7 @@ void setupWebServer() {
   });
   // Admin-tier factory reset: also delete the saved defaults.
   server.on("/api/params/factory", HTTP_POST, []() {
+    if (guestBlocked()) return;
     if (!authed()) return;
     prefs.begin("cube", false);
     prefs.remove(paramsKeyFor(activePatternIdx).c_str());
@@ -711,6 +738,7 @@ void setupWebServer() {
   // Runtime LED hardware config: pins + single/dual split. Applies live
   // (strips are rebuilt) and persists.
   server.on("/api/ledcfg", HTTP_POST, []() {
+    if (guestBlocked()) return;
     if (!authed()) return;
     settings.ledPin = server.arg("pin").toInt();
     settings.ledPin2 = server.hasArg("pin2") ? server.arg("pin2").toInt() : -1;
@@ -739,6 +767,7 @@ void setupWebServer() {
     server.send(200, "application/json", json);
   });
   server.on("/api/miccfg", HTTP_POST, []() {
+    if (guestBlocked()) return;
     if (!authed()) return;
     if (server.hasArg("ch")) settings.micLeft = server.arg("ch") == "left";
     if (server.hasArg("squelch")) settings.micSquelch = server.arg("squelch").toFloat();
@@ -754,6 +783,7 @@ void setupWebServer() {
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/layout", HTTP_POST, []() {
+    if (guestBlocked()) return;
     if (!authed()) return;
     settings.layout.flipX = server.arg("fx") == "1";
     settings.layout.flipY = server.arg("fy") == "1";
@@ -813,10 +843,17 @@ void setupWebServer() {
     server.send(200, "application/json", json);
   });
   server.on("/calibrate", HTTP_GET, []() {
+    if (guestBlocked()) return;
     if (!authed()) return;
     server.send(200, "text/html", kCalibrateHtml);
   });
+  server.on("/admin", HTTP_GET, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    server.send(200, "text/html", kAdminHtml);
+  });
   server.on("/leds", HTTP_GET, []() {
+    if (guestBlocked()) return;
     if (!authed()) return;
     server.send(200, "text/html", kLedsHtml);
   });
@@ -842,6 +879,7 @@ void setupWebServer() {
     }
   });
   server.on("/wifi", HTTP_GET, []() {
+    if (guestBlocked()) return;
     if (!authed()) return;
     String page = kWifiHtml;
     page.replace("%SSID%", settings.wifiSsid);
@@ -849,6 +887,7 @@ void setupWebServer() {
     server.send(200, "text/html", page);
   });
   server.on("/wifi", HTTP_POST, []() {
+    if (guestBlocked()) return;
     if (!authed()) return;
     if (server.hasArg("ssid")) saveSetting("ssid", server.arg("ssid"));
     if (server.arg("pass").length() > 0) saveSetting("pass", server.arg("pass"));

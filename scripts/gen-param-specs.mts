@@ -1,7 +1,20 @@
 /**
- * Generate firmware/lib/core/cube_param_specs.h from the TS pattern metas —
- * single source of truth for parameter names/types/ranges/defaults on both
- * sides. Run with: pnpm exec tsx scripts/gen-param-specs.mts
+ * ============================================================================
+ * RETIRED — DO NOT RUN. Kept for historical reference only.
+ * ============================================================================
+ *
+ * This generator emitted firmware/lib/core/cube_param_specs.h from the TS
+ * pattern metas back when src/shared/patterns/* was the single source of truth.
+ * The TS side is now DEPRECATED and cube_param_specs.h is HAND-MAINTAINED and
+ * AUTHORITATIVE. Firmware pattern params are edited directly in that header
+ * (e.g. the spiral "cycle" axis option was added there, with no TS counterpart).
+ *
+ * Running this script would OVERWRITE those hand-maintained firmware specs and
+ * silently drop firmware-only params. Do not invoke it. If the TS side is ever
+ * removed entirely, this file can be deleted.
+ *
+ * (Historical usage: pnpm exec tsx scripts/gen-param-specs.mts)
+ * ============================================================================
  */
 import fs from 'node:fs';
 import { patterns } from '../src/shared/patterns/index.js';

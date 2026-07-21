@@ -32,16 +32,16 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
   button{padding:8px 12px;border-radius:6px;border:none;background:#26262e;color:#ccc;font-size:13px;cursor:pointer}
   button.pri{background:#2a5aa5;color:#fff}
 </style></head><body>
-<nav><b>Console</b><a href="/leds">LEDs</a><a href="/calibrate">Calibrate</a><a href="/snake">Game pad</a><a href="/wifi">WiFi</a></nav>
+<nav><b>Console</b><a href="/snake">Game pad</a><a href="/admin" id="adminLink">Admin 🔒</a></nav>
 <h1>cube-light</h1>
+<div id="guestBanner" style="display:none;background:#123a20;border:1px solid #2a8050;color:#8fe0a8;border-radius:6px;padding:10px;font-size:13px;margin-bottom:12px">
+🎉 Feel free to tinker! Pick any pattern and play with the knobs. You can't
+break anything permanent — just reset when you're done.</div>
 <div id="liveBanner" style="display:none;background:#5a3a10;border:1px solid #a06820;color:#f0c070;border-radius:6px;padding:10px;font-size:13px;margin-bottom:12px">
 ⚠ An external stream (dev server?) is driving the cube right now — the
 pattern below won't show until it stops.</div>
 <label>Pattern</label>
 <select id="pattern"></select>
-<label>Brightness</label>
-<div class="row"><input type="range" id="bright" min="0" max="100" step="1"><output id="brightv"></output></div>
-
 
 <label>Mic reactivity</label>
 <button id="micToggle" style="width:100%;padding:10px;font-size:15px"></button>
@@ -50,33 +50,10 @@ pattern below won't show until it stops.</div>
 <div id="params"></div>
 <div class="prow">
   <button id="resetParams">Reset to defaults</button>
-  <button class="pri" id="saveParams">Save as power-on defaults 🔒</button>
-  <button id="factoryParams">Factory reset 🔒</button>
 </div>
 </details>
 
-<details><summary>Admin 🔒</summary>
-<p style="font-size:12px;color:#888">These change hardware, persistence, or
-network state. When a console password is set (WiFi page), they ask for it
-(username <b>cube</b>); everything above stays open for guests.</p>
-<label>Which way is up</label>
-<select id="up"><option value="z+">Z+ (default)</option><option value="z-">Z&minus;</option><option value="x+">X+</option><option value="x-">X&minus;</option><option value="y+">Y+</option><option value="y-">Y&minus;</option></select>
-<label>Power budget (mA, 0 = no limit)</label>
-<input type="number" id="supply" min="0" step="100">
-<label>Color order</label>
-<select id="order"><option>RGB</option><option>GRB</option><option>BRG</option><option>RBG</option><option>GBR</option><option>BGR</option></select>
-</details>
-
-<details><summary>Microphone 🔒</summary>
-<div class="prow"><label>Level</label><div class="meter"><div id="mLevel"></div></div><output id="mLevelV"></output></div>
-<div class="prow"><label>Beat</label><div class="meter"><div id="mBeat"></div></div></div>
-<div class="prow"><label>Raw RMS / frames</label><output id="mRaw" style="min-width:160px;text-align:left"></output></div>
-<div class="prow"><label>Channel</label><select id="micCh"><option value="right">right</option><option value="left">left</option></select></div>
-<div class="prow"><label>Squelch (raw RMS)</label><input type="range" id="micSqR" style="flex:1" min="0" max="500" step="5"><input type="number" id="micSq" style="flex:0 0 66px" min="0" step="5"></div>
-<div class="prow"><label>Live raw RMS</label><output id="micSqLive" style="min-width:80px;text-align:left;color:#7ab0ff">–</output></div>
-<p style="font-size:12px;color:#888;line-height:1.5;margin:4px 0 10px">Soft-knee gate: audio is fully silenced below squelch/2, ramps up in between, and is fully open at squelch and above. Watch the live RMS while it's quiet, then set squelch just above that idle level.</p>
-<div class="prow"><button class="pri" id="micApply">Apply mic config</button></div>
-</details>
+<button class="pri" id="guestReset" style="display:none;width:100%;padding:12px;margin-top:18px">Alright, broken it in enough? Set it back →</button>
 
 <div class="stat" id="stat"></div>
 <script>
@@ -87,10 +64,15 @@ async function refresh(){
   const sel=$('pattern');
   if(sel.options.length===0) for(const p of s.patterns){const o=document.createElement('option');o.value=o.textContent=p;sel.appendChild(o)}
   sel.value=s.pattern;
-  $('bright').value=Math.round(s.brightness*100);$('brightv').textContent=$('bright').value+'%';
-  $('supply').value=s.supplyMA; $('order').value=s.colorOrder; $('up').value=s.up;
   micOn=s.micOn; drawMic();
   $('liveBanner').style.display=s.live?'block':'none';
+  // Guests (on the cube's own hotspot) can tinker but not clobber saved
+  // settings — hide the admin door, offer a friendly "set it back" button.
+  if(s.guest){
+    $('guestBanner').style.display='block';
+    $('guestReset').style.display='block';
+    $('adminLink').style.display='none';
+  }
   $('stat').textContent=`ip ${s.ip} · rssi ${s.rssi}dBm · ${s.fps}fps target · v${s.version}`;
   loadParams();
 }
@@ -152,33 +134,13 @@ async function loadParams(){
     for(const sp of groups[g])box.appendChild(makeRow(sp,d,g));
   }
 }
-$('saveParams').onclick=async()=>{await post('/api/params/save');$('saveParams').textContent='Saved ✓';setTimeout(()=>$('saveParams').textContent='Save as power-on defaults 🔒',1500)};
 $('resetParams').onclick=async()=>{await post('/api/params/reset');loadParams()};
-$('factoryParams').onclick=async()=>{await post('/api/params/factory');loadParams()};
-const applyMic=()=>post(`/api/miccfg?ch=${$('micCh').value}&squelch=${$('micSq').value}`);
-$('micApply').onclick=applyMic;
-$('micSqR').oninput=()=>{$('micSq').value=$('micSqR').value};
-$('micSqR').onchange=applyMic;
-$('micSq').oninput=()=>{$('micSqR').value=$('micSq').value};
-$('micSq').onchange=applyMic;
-let micInit=false;
-setInterval(async()=>{
-  try{
-    const a=await (await fetch('/api/audio')).json();
-    $('mLevel').style.width=Math.round(a.level*100)+'%';
-    $('mLevelV').textContent=a.level.toFixed(2);
-    $('mBeat').style.width=Math.round(a.beat*100)+'%';
-    $('mRaw').textContent=`rms ${a.rms} · dc ${a.dc} · raw ${a.rawMin}..${a.rawMax} · ${a.frames} frames`;
-    $('micSqLive').textContent=a.rms;
-    if(!micInit){micInit=true;$('micCh').value=a.channel;$('micSq').value=$('micSqR').value=a.squelch}
-  }catch(e){}
-},700);
+$('guestReset').onclick=async()=>{
+  await post('/api/params/reset');loadParams();
+  $('guestReset').textContent='Set back to how it was ✓ thanks!';
+  setTimeout(()=>$('guestReset').textContent='Alright, broken it in enough? Set it back →',2200);
+};
 $('pattern').onchange=async e=>{await post('/api/pattern?id='+encodeURIComponent(e.target.value));loadParams()};
-$('bright').oninput=e=>{$('brightv').textContent=e.target.value+'%'};
-$('bright').onchange=e=>post('/api/brightness?v='+(e.target.value/100));
-$('supply').onchange=e=>post('/api/supply?ma='+e.target.value);
-$('order').onchange=e=>post('/api/order?v='+e.target.value);
-$('up').onchange=e=>post('/api/up?v='+encodeURIComponent(e.target.value));
 refresh();
 </script></body></html>)HTML";
 
@@ -482,4 +444,106 @@ $('apply').onclick=async()=>{
   await fetch(`/api/ledcfg?pin=${$('lPin').value}&pin2=${$('lPin2').value}&split=${$('lSplit').value}`,{method:'POST'});
   $('msg').textContent='Applied — outputs rebuilt without a reboot.';
 };
+</script></body></html>)HTML";
+
+// Admin page: everything that changes hardware, persistence, or network
+// state. Split off the console (kIndexHtml) so the main page stays a clean
+// guest-safe surface. Owner-only — the server 403s guests on the cube's AP.
+const char kAdminHtml[] = R"HTML(<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cube-light admin</title>
+<style>
+  body{font-family:system-ui;background:#0d0d10;color:#ddd;margin:0;padding:24px;max-width:420px;margin:auto}
+  h1{font-size:18px;margin:12px 0 8px}
+  h2{font-size:14px;margin:26px 0 4px;color:#bbb;border-top:1px solid #222;padding-top:16px}
+  p{font-size:13px;color:#999;line-height:1.5;margin:6px 0}
+  label{display:block;margin:16px 0 6px;font-size:13px;color:#999}
+  select,input[type=range],input[type=number]{width:100%;box-sizing:border-box;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:8px;font-size:15px}
+  .row{display:flex;gap:8px;align-items:center}
+  .row output{min-width:48px;text-align:right;font-variant-numeric:tabular-nums}
+  a{color:#7ab0ff}
+  .prow{display:flex;gap:10px;align-items:center;margin:10px 0}
+  .prow label{flex:0 0 46%;margin:0}
+  .prow input[type=range]{flex:1}
+  .prow output{min-width:44px;text-align:right;font-size:12px;color:#aaa}
+  .meter{height:10px;background:#1a1a20;border-radius:5px;overflow:hidden;flex:1}
+  .meter div{height:100%;background:#2a5aa5;width:0%}
+  button{padding:8px 12px;border-radius:6px;border:none;background:#26262e;color:#ccc;font-size:13px;cursor:pointer}
+  button.pri{background:#2a5aa5;color:#fff}
+  nav{display:flex;gap:14px;font-size:13px;margin-bottom:14px}
+  nav a{color:#7ab0ff;text-decoration:none}
+  nav b{color:#eee}
+</style></head><body>
+<nav><a href="/">Console</a><a href="/leds">LEDs</a><a href="/calibrate">Calibrate</a><a href="/snake">Game pad</a><a href="/wifi">WiFi</a></nav>
+<h1>Admin 🔒</h1>
+<p>These change hardware, persistence, or network state. When a console
+password is set (WiFi page), they ask for it (username <b>cube</b>).</p>
+
+<label>Brightness</label>
+<div class="row"><input type="range" id="bright" min="0" max="100" step="1"><output id="brightv"></output></div>
+<label>Which way is up</label>
+<select id="up"><option value="z+">Z+ (default)</option><option value="z-">Z&minus;</option><option value="x+">X+</option><option value="x-">X&minus;</option><option value="y+">Y+</option><option value="y-">Y&minus;</option></select>
+<label>Power budget (mA, 0 = no limit)</label>
+<input type="number" id="supply" min="0" step="100">
+<label>Color order</label>
+<select id="order"><option>RGB</option><option>GRB</option><option>BRG</option><option>RBG</option><option>GBR</option><option>BGR</option></select>
+
+<h2>Power-on defaults</h2>
+<p>Applies to the pattern currently running on the console.</p>
+<div class="prow">
+  <button class="pri" id="saveParams">Save current pattern as power-on defaults 🔒</button>
+</div>
+<div class="prow">
+  <button id="factoryParams">Factory reset this pattern 🔒</button>
+</div>
+
+<h2>Microphone 🔒</h2>
+<div class="prow"><label>Level</label><div class="meter"><div id="mLevel"></div></div><output id="mLevelV"></output></div>
+<div class="prow"><label>Beat</label><div class="meter"><div id="mBeat"></div></div></div>
+<div class="prow"><label>Raw RMS / frames</label><output id="mRaw" style="min-width:160px;text-align:left"></output></div>
+<div class="prow"><label>Channel</label><select id="micCh"><option value="right">right</option><option value="left">left</option></select></div>
+<div class="prow"><label>Squelch (raw RMS)</label><input type="range" id="micSqR" style="flex:1" min="0" max="500" step="5"><input type="number" id="micSq" style="flex:0 0 66px" min="0" step="5"></div>
+<div class="prow"><label>Live raw RMS</label><output id="micSqLive" style="min-width:80px;text-align:left;color:#7ab0ff">–</output></div>
+<p style="font-size:12px;color:#888;line-height:1.5;margin:4px 0 10px">Soft-knee gate: audio is fully silenced below squelch/2, ramps up in between, and is fully open at squelch and above. Watch the live RMS while it's quiet, then set squelch just above that idle level.</p>
+<div class="prow"><button class="pri" id="micApply">Apply mic config</button></div>
+
+<h2>Hardware &amp; network</h2>
+<p><a href="/leds">LED outputs &rarr;</a> &nbsp;·&nbsp; <a href="/calibrate">Calibrate wiring &rarr;</a> &nbsp;·&nbsp; <a href="/wifi">WiFi &amp; security &rarr;</a></p>
+
+<p style="margin-top:20px"><a href="/">&larr; back to console</a></p>
+<script>
+const $=id=>document.getElementById(id);
+async function post(url){await fetch(url,{method:'POST'})}
+async function refresh(){
+  const s=await (await fetch('/api/status')).json();
+  $('bright').value=Math.round(s.brightness*100);$('brightv').textContent=$('bright').value+'%';
+  $('supply').value=s.supplyMA;$('order').value=s.colorOrder;$('up').value=s.up;
+}
+$('bright').oninput=e=>{$('brightv').textContent=e.target.value+'%'};
+$('bright').onchange=e=>post('/api/brightness?v='+(e.target.value/100));
+$('supply').onchange=e=>post('/api/supply?ma='+e.target.value);
+$('order').onchange=e=>post('/api/order?v='+e.target.value);
+$('up').onchange=e=>post('/api/up?v='+encodeURIComponent(e.target.value));
+$('saveParams').onclick=async()=>{await post('/api/params/save');$('saveParams').textContent='Saved ✓';setTimeout(()=>$('saveParams').textContent='Save current pattern as power-on defaults 🔒',1500)};
+$('factoryParams').onclick=async()=>{await post('/api/params/factory');$('factoryParams').textContent='Reset ✓';setTimeout(()=>$('factoryParams').textContent='Factory reset this pattern 🔒',1500)};
+const applyMic=()=>post(`/api/miccfg?ch=${$('micCh').value}&squelch=${$('micSq').value}`);
+$('micApply').onclick=applyMic;
+$('micSqR').oninput=()=>{$('micSq').value=$('micSqR').value};
+$('micSqR').onchange=applyMic;
+$('micSq').oninput=()=>{$('micSqR').value=$('micSq').value};
+$('micSq').onchange=applyMic;
+let micInit=false;
+setInterval(async()=>{
+  try{
+    const a=await (await fetch('/api/audio')).json();
+    $('mLevel').style.width=Math.round(a.level*100)+'%';
+    $('mLevelV').textContent=a.level.toFixed(2);
+    $('mBeat').style.width=Math.round(a.beat*100)+'%';
+    $('mRaw').textContent=`rms ${a.rms} · dc ${a.dc} · raw ${a.rawMin}..${a.rawMax} · ${a.frames} frames`;
+    $('micSqLive').textContent=a.rms;
+    if(!micInit){micInit=true;$('micCh').value=a.channel;$('micSq').value=$('micSqR').value=a.squelch}
+  }catch(e){}
+},700);
+refresh();
 </script></body></html>)HTML";
