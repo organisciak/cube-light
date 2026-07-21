@@ -33,26 +33,35 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
   .modwrap{flex-basis:100%;display:flex;gap:6px;align-items:center;margin:2px 0 4px;padding-left:6px;border-left:2px solid #43324f}
   .modwrap select{flex:0 0 92px;font-size:12px;padding:4px}
   .modfields{display:flex;gap:4px;flex:1}
+  .modcol{display:flex;flex-direction:column;flex:1;min-width:0}
+  .modcap{font-size:9px;color:#8a7f96;letter-spacing:.04em;margin:0 0 1px 2px;white-space:nowrap}
   .modf{width:100%;min-width:0;box-sizing:border-box;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:4px;font-size:12px}
   .meter{height:10px;background:#1a1a20;border-radius:5px;overflow:hidden;flex:1}
   .meter div{height:100%;background:#2a5aa5;width:0%}
   button{padding:8px 12px;border-radius:6px;border:none;background:#26262e;color:#ccc;font-size:13px;cursor:pointer}
   button.pri{background:#2a5aa5;color:#fff}
   #plToggle{position:fixed;right:14px;bottom:14px;z-index:20;background:#2a5aa5;color:#fff;padding:10px 14px;border-radius:20px;box-shadow:0 2px 10px #0008}
-  #sidebar{position:fixed;top:0;right:0;bottom:0;width:290px;max-width:86vw;background:#141419;border-left:1px solid #2a2a33;box-shadow:-4px 0 18px #0009;z-index:30;transform:translateX(105%);transition:transform .22s ease;display:flex;flex-direction:column;padding:16px;box-sizing:border-box}
+  #sidebar{position:fixed;top:0;right:0;bottom:0;width:320px;max-width:88vw;background:#141419;border-left:1px solid #2a2a33;box-shadow:-4px 0 18px #0009;z-index:30;transform:translateX(105%);transition:transform .22s ease;display:flex;flex-direction:column;padding:16px;box-sizing:border-box}
   #sidebar.open{transform:none}
   .plhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
   .plhead b{font-size:15px;color:#eee}
   #plStatus{font-size:12px;color:#8fb8ff;min-height:16px;margin:2px 0 10px}
   .plctrls{display:flex;gap:6px;margin-bottom:12px}
   .plctrls button{flex:1;font-size:16px;padding:8px 0}
-  #plRows{overflow-y:auto;flex:1}
-  .plrow{display:flex;gap:6px;align-items:center;padding:7px 6px;border-radius:6px;margin-bottom:3px;background:#1a1a20}
+  #plRows{overflow-y:auto;overflow-x:hidden;flex:1}
+  .plcap{display:none;gap:6px;font-size:9px;color:#8a7f96;letter-spacing:.05em;padding:0 6px;margin-bottom:3px}
+  .plrow{display:flex;gap:6px;align-items:center;padding:6px;border-radius:6px;margin-bottom:3px;background:#1a1a20}
   .plrow.now{background:#1e3352;outline:1px solid #3a6bb0}
-  .plname{flex:1;font-size:13px;color:#ddd;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .plname{flex:1;min-width:0;cursor:pointer}
+  .plname>div:first-child{font-size:13px;color:#ddd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .plpat{font-size:10px;color:#778}
   .plmeta{font-size:11px;color:#888;white-space:nowrap}
-  .pldwell{width:46px;flex:0 0 auto;padding:4px;font-size:12px}
-  .plpri{width:40px;flex:0 0 auto;padding:4px;font-size:12px}
+  /* Scoped with #sidebar so these beat the page-wide input[type=number] rule
+     (which otherwise blows each input to 100% width and hides the row). */
+  #sidebar input[type=number]{width:48px;flex:0 0 auto;padding:5px 3px;font-size:13px;text-align:center}
+  #sidebar input[type=text]{flex:1;min-width:0;background:#1a1a20;color:#eee;border:1px solid #333;border-radius:6px;padding:8px;font-size:14px}
+  .plbtn{padding:4px 7px;font-size:12px;background:#222}
+  #params input.modf{padding:4px;font-size:12px}
 </style></head><body>
 <nav><b>Console</b><a href="/snake">Game pad</a><a href="/admin" id="adminLink">Admin 🔒</a></nav>
 <h1>cube-light</h1>
@@ -76,23 +85,11 @@ pattern below won't show until it stops.</div>
 </div>
 </details>
 
-<details id="presetsBox"><summary>Presets</summary>
-<div id="presetList"></div>
-<div class="prow" id="presetSave">
-  <input type="text" id="presetName" placeholder="Save current as…">
-  <button id="presetSaveBtn" class="pri">Save</button>
-</div>
-<div class="prow" id="presetIO" style="display:none">
-  <button id="presetExport" title="Download all presets as JSON">⬇ Export</button>
-  <label class="pri" style="cursor:pointer" title="Import presets from a JSON file (overwrites matching names)">⬆ Import<input type="file" id="presetImport" accept="application/json,.json" style="display:none"></label>
-</div>
-</details>
-
 <button class="pri" id="guestReset" style="display:none;width:100%;padding:12px;margin-top:18px">Alright, broken it in enough? Set it back →</button>
 
-<button id="plToggle">☰ Playlist</button>
+<button id="plToggle">☰ Presets</button>
 <div id="sidebar">
-  <div class="plhead"><b>Playlist</b><button id="plClose">✕</button></div>
+  <div class="plhead"><b>Presets</b><button id="plClose">✕</button></div>
   <div id="plStatus">Cycle paused</div>
   <div class="plctrls">
     <button id="plPrev" title="Previous">⏮</button>
@@ -100,7 +97,16 @@ pattern below won't show until it stops.</div>
     <button id="plNext" title="Next">⏭</button>
     <button id="plShuffle" title="Shuffle (priority-weighted)">🔀</button>
   </div>
+  <div class="plcap" id="plCap"><span style="flex:1">preset — tap to show</span><span style="width:48px;text-align:center">dwell s</span><span style="width:48px;text-align:center">★ 0–5</span><span style="width:52px"></span></div>
   <div id="plRows"></div>
+  <div class="prow" id="presetSave" style="margin:10px 0 0">
+    <input type="text" id="presetName" placeholder="Save current look as…">
+    <button id="presetSaveBtn" class="pri">Save</button>
+  </div>
+  <div class="prow" id="presetIO" style="display:none;margin:4px 0 0">
+    <button id="presetExport" title="Download all presets as JSON">⬇ Export</button>
+    <label class="pri" style="cursor:pointer;padding:8px 12px;border-radius:6px;font-size:13px" title="Import presets from a JSON file (overwrites matching names)">⬆ Import<input type="file" id="presetImport" accept="application/json,.json" style="display:none"></label>
+  </div>
 </div>
 
 <div class="stat" id="stat"></div>
@@ -110,7 +116,14 @@ async function post(url){await fetch(url,{method:'POST'})}
 async function refresh(){
   const s=await (await fetch('/api/status')).json();
   const sel=$('pattern');
-  if(sel.options.length===0) for(const p of s.patterns){const o=document.createElement('option');o.value=o.textContent=p;sel.appendChild(o)}
+  if(sel.options.length===0){
+    // Split the dropdown: display patterns vs calibration/diagnostic tools.
+    const UTIL=new Set(['snake-cal','index-walk','lit-pixel','build-map']);
+    const gLight=document.createElement('optgroup');gLight.label='Light patterns';
+    const gTool=document.createElement('optgroup');gTool.label='Calibration & tools';
+    for(const p of s.patterns){const o=document.createElement('option');o.value=o.textContent=p;(UTIL.has(p)?gTool:gLight).appendChild(o)}
+    sel.appendChild(gLight);sel.appendChild(gTool);
+  }
   sel.value=s.pattern;
   micOn=s.micOn; drawMic();
   isGuest=!!s.guest;
@@ -191,21 +204,34 @@ function makeMod(sp){
     const o=document.createElement('option');o.value=v;o.textContent=t;sel.appendChild(o)});
   sel.value=sp.mod?sp.mod.mode:'off';
   const fields=document.createElement('div');fields.className='modfields';
-  const inp=(k,val)=>{const i=document.createElement('input');i.type='number';i.className='modf';i.dataset.k=k;i.title=k;i.placeholder=k;if(val!==undefined&&val!=='')i.value=val;return i};
+  // Each input gets a tiny caption so the numbers are identifiable at a
+  // glance, plus a step attr matching the param spec so spinners move in
+  // sensible increments (integer-only params like plane count step whole).
+  const inp=(k,cap,val,st)=>{const c=document.createElement('div');c.className='modcol';
+    const l=document.createElement('div');l.className='modcap';l.textContent=cap;
+    const i=document.createElement('input');i.type='number';i.className='modf';i.dataset.k=k;i.title=k;
+    i.step=st||'any';if(val!==undefined&&val!=='')i.value=val;
+    c.append(l,i);c.inp=i;c.cap=l;return c};
   const m=sp.mod||{};
-  const fMin=inp('min',m.min),fMax=inp('max',m.max),fRate=inp('rate',m.rate),fStep=inp('step',m.step);
-  fields.append(fMin,fMax,fRate,fStep);
+  const cMin=inp('min','min',m.min,sp.step),cMax=inp('max','max',m.max,sp.step),
+        cRate=inp('rate','rate',m.rate),cStep=inp('step','± step',m.step,sp.step);
+  fields.append(cMin,cMax,cRate,cStep);
+  const cols=[cMin,cMax,cRate,cStep];
+  // step is unused by ping-pong; rate means units/s (pingpong) vs steps/s (walk).
+  const shape=()=>{const md=sel.value;
+    cStep.style.display=md==='walk'?'flex':'none';
+    cRate.cap.textContent=md==='walk'?'steps/s':'units/s'};
   const send=(refresh)=>{
     const mode=sel.value;
     if(mode==='off'){post('/api/param/mod?key='+sp.key+'&mode=off');fields.style.display='none';if(refresh)setTimeout(loadParams,150);return}
-    fields.style.display='flex';
+    fields.style.display='flex';shape();
     let q='/api/param/mod?key='+sp.key+'&mode='+mode;
-    [fMin,fMax,fRate,fStep].forEach(f=>{if(f.value!=='')q+='&'+f.dataset.k+'='+f.value});
+    cols.forEach(c=>{if(c.inp.value!=='')q+='&'+c.inp.dataset.k+'='+c.inp.value});
     post(q);if(refresh)setTimeout(loadParams,150);
   };
   sel.onchange=()=>send(true);           // refresh to reflect server defaults / badge
-  fields.querySelectorAll('input').forEach(f=>f.onchange=()=>send(false));
-  fields.style.display=sel.value==='off'?'none':'flex';
+  cols.forEach(c=>c.inp.onchange=()=>send(false));
+  fields.style.display=sel.value==='off'?'none':'flex';shape();
   wrap.append(sel,fields);
   return wrap;
 }
@@ -229,34 +255,51 @@ $('guestReset').onclick=async()=>{
   setTimeout(()=>$('guestReset').textContent='Alright, broken it in enough? Set it back →',2200);
 };
 $('pattern').onchange=async e=>{await post('/api/pattern?id='+encodeURIComponent(e.target.value));loadParams()};
+// One list, one place: the sidebar is the preset manager. Rows: tap name to
+// show it; dwell + priority edit inline; ✎ rename, ✕ delete (owners only).
+const esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+let presetNames=[];
 async function loadPresets(){
   const list=await (await fetch('/api/presets')).json();
-  const box=$('presetList');box.innerHTML='';
-  if(!list.length)box.innerHTML='<div style="font-size:12px;color:#777;margin:8px 0">No presets saved yet.</div>';
+  presetNames=list.map(p=>p.name);
+  const box=$('plRows');box.innerHTML='';
+  $('plCap').style.display=list.length&&!isGuest?'flex':'none';
+  if(!list.length)box.innerHTML='<div style="font-size:12px;color:#777;line-height:1.5">No presets yet — dial in a pattern you like, then save it below.</div>';
   for(const p of list){
-    const row=document.createElement('div');row.className='prow';
-    const lab=document.createElement('label');lab.textContent=p.name+' · '+p.pattern;lab.style.flex='1';row.appendChild(lab);
-    const load=document.createElement('button');load.textContent='Load';
-    load.onclick=async()=>{await post('/api/presets/load?name='+encodeURIComponent(p.name));refresh()};
-    row.appendChild(load);
-    if(!isGuest){
-      const ren=document.createElement('button');ren.textContent='✎';ren.title='Rename';
+    const row=document.createElement('div');row.className='plrow';row.dataset.name=p.name;
+    const nm=document.createElement('div');nm.className='plname';nm.title='Show this preset';
+    nm.innerHTML='<div>'+esc(p.name)+'</div><div class="plpat">'+esc(p.pattern)+'</div>';
+    nm.onclick=async()=>{await post('/api/presets/load?name='+encodeURIComponent(p.name));refresh()};
+    row.appendChild(nm);
+    if(isGuest){
+      const m=document.createElement('span');m.className='plmeta';m.textContent=(+p.dwellSec)+'s · ★'+p.priority;row.appendChild(m);
+    }else{
+      const dw=document.createElement('input');dw.type='number';dw.min=1;dw.value=p.dwellSec;dw.title='Seconds this preset shows in the cycle';
+      dw.onchange=()=>post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&dwellSec='+dw.value);
+      const pr=document.createElement('input');pr.type='number';pr.min=0;pr.max=5;pr.value=p.priority;pr.title='Shuffle priority 0-5 (5 = most often, 0 = never auto-plays)';
+      pr.onchange=()=>post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&priority='+pr.value);
+      const ren=document.createElement('button');ren.className='plbtn';ren.textContent='✎';ren.title='Rename';
       ren.onclick=async()=>{const nn=prompt('Rename "'+p.name+'" to:',p.name);if(!nn||!nn.trim()||nn.trim()===p.name)return;await fetch('/api/presets/rename?from='+encodeURIComponent(p.name)+'&to='+encodeURIComponent(nn.trim()),{method:'POST'});loadPresets()};
-      row.appendChild(ren);
-      const del=document.createElement('button');del.textContent='✕';del.title='Delete';
+      const del=document.createElement('button');del.className='plbtn';del.textContent='✕';del.title='Delete';
       del.onclick=async()=>{if(confirm('Delete "'+p.name+'"?')){await post('/api/presets/delete?name='+encodeURIComponent(p.name));loadPresets()}};
-      row.appendChild(del);
+      row.append(dw,pr,ren,del);
     }
     box.appendChild(row);
   }
   $('presetSave').style.display=isGuest?'none':'flex';
   $('presetIO').style.display=isGuest?'none':'flex';
-  renderPlRows(list);
+  markNow();
 }
+// Save flow: Enter saves; the button flips to "Overwrite" when the name
+// already exists (import-style replace semantics).
+$('presetName').oninput=()=>{$('presetSaveBtn').textContent=presetNames.includes($('presetName').value.trim())?'Overwrite':'Save'};
+$('presetName').onkeydown=e=>{if(e.key==='Enter')$('presetSaveBtn').click()};
 $('presetSaveBtn').onclick=async()=>{
   const n=$('presetName').value.trim();if(!n)return;
   await post('/api/presets/save?name='+encodeURIComponent(n));
-  $('presetName').value='';loadPresets();
+  $('presetName').value='';$('presetSaveBtn').textContent='Saved ✓';
+  setTimeout(()=>{$('presetSaveBtn').textContent='Save'},1200);
+  loadPresets();
 };
 $('presetExport').onclick=()=>{location.href='/api/presets/export'};
 $('presetImport').onchange=async(e)=>{
@@ -268,29 +311,8 @@ $('presetImport').onchange=async(e)=>{
   else alert('Import failed');
   loadPresets();
 };
-// ---- playlist sidebar ----
+// ---- playlist state ----
 let plState={};
-function renderPlRows(list){
-  const box=$('plRows');box.innerHTML='';
-  if(!list.length){box.innerHTML='<div style="font-size:12px;color:#777">No presets to cycle yet.</div>';return}
-  for(const p of list){
-    const row=document.createElement('div');row.className='plrow';row.dataset.name=p.name;
-    const nm=document.createElement('span');nm.className='plname';nm.textContent=p.name;nm.title=p.pattern;
-    nm.onclick=async()=>{await post('/api/presets/load?name='+encodeURIComponent(p.name));refresh()};
-    row.appendChild(nm);
-    if(isGuest){
-      const m=document.createElement('span');m.className='plmeta';m.textContent=(+p.dwellSec)+'s · ★'+p.priority;row.appendChild(m);
-    }else{
-      const dw=document.createElement('input');dw.type='number';dw.min=1;dw.className='pldwell';dw.value=p.dwellSec;dw.title='Dwell seconds';
-      dw.onchange=()=>post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&dwellSec='+dw.value);
-      const pr=document.createElement('input');pr.type='number';pr.min=0;pr.max=5;pr.className='plpri';pr.value=p.priority;pr.title='Priority 0-5 (0 = never auto-plays in shuffle)';
-      pr.onchange=()=>post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&priority='+pr.value);
-      row.appendChild(dw);row.appendChild(pr);
-    }
-    box.appendChild(row);
-  }
-  markNow();
-}
 function markNow(){
   document.querySelectorAll('.plrow').forEach(r=>{
     r.classList.toggle('now',plState.enabled&&r.dataset.name===plState.current);
@@ -308,7 +330,7 @@ async function updatePlaylist(){
     :'Cycle paused';
   markNow();
 }
-$('plToggle').onclick=()=>{$('sidebar').classList.toggle('open');updatePlaylist()};
+$('plToggle').onclick=()=>{$('sidebar').classList.toggle('open');loadPresets();updatePlaylist()};
 $('plClose').onclick=()=>$('sidebar').classList.remove('open');
 $('plPlay').onclick=async()=>{
   if(!plState.enabled&&isGuest)return;  // guests may pause but not start

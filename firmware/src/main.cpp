@@ -339,6 +339,7 @@ void loadPatternMods(int idx) {
   const String blob = prefs.getString(modKeyFor(idx).c_str(), "");
   prefs.end();
   if (blob.length() == 0) return;
+  const PatternSpecs* mps = specsFor(kPatterns[idx]->id);
   int pos = 0;
   while (pos < (int)blob.length()) {
     int nl = blob.indexOf('\n', pos);
@@ -360,7 +361,12 @@ void loadPatternMods(int idx) {
     const float mx = v.substring(c2 + 1, c3).toFloat();
     const float rate = v.substring(c3 + 1, c4).toFloat();
     const float step = v.substring(c4 + 1).toFloat();
-    mods.set(key.c_str(), mode, mn, mx, rate, step, params.num(key.c_str(), mn));
+    float quant = 0;
+    if (mps)
+      for (int i = 0; i < mps->count; i++)
+        if (key == mps->specs[i].key) { quant = mps->specs[i].stepV; break; }
+    mods.set(key.c_str(), mode, mn, mx, rate, step, params.num(key.c_str(), mn),
+             quant);
   }
 }
 
@@ -539,7 +545,7 @@ bool loadPresetByName(const String& name) {
       if (mode == ModStore::OFF) continue;
       mods.set(kv.key().c_str(), mode, o["min"] | mp->minV, o["max"] | mp->maxV,
                o["rate"] | 1.0f, o["step"] | mp->stepV,
-               params.num(kv.key().c_str(), mp->defNum));
+               params.num(kv.key().c_str(), mp->defNum), mp->stepV);
     }
   }
   if (activePattern && activePattern->init) activePattern->init(ctx);
@@ -1376,7 +1382,7 @@ void setupWebServer() {
     if (server.hasArg("rate")) rate = server.arg("rate").toFloat();
     if (server.hasArg("step")) step = server.arg("step").toFloat();
     mods.set(key.c_str(), mode, mn, mx, rate, step,
-             params.num(key.c_str(), sp->defNum));
+             params.num(key.c_str(), sp->defNum), sp->stepV);
     server.send(200, "text/plain", "ok");
   });
   // Body: text lines "led,x,y,z". Returns candidates/suggestion as JSON.

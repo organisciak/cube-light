@@ -33,6 +33,7 @@ class ModStore {
     char key[Params::kKeyLen];
     uint8_t mode;
     float minV, maxV, rate, step;
+    float quant;  // spec step: written values snap to min + n*quant (0 = off)
     // runtime state (not persisted)
     float phase;      // pingpong triangle phase, 0..2 (0..1 up, 1..2 down)
     float value;      // walk current value
@@ -66,7 +67,12 @@ class ModStore {
     mx = sp.maxV;
     float range = mx - mn;
     if (range <= 0) range = 1;
-    step = sp.stepV > 0 ? sp.stepV * 4.0f : range / 20.0f;
+    // Walk step: ~4 spec-steps, but never below one spec-step and never a
+    // huge fraction of the range (planes 1..4 step 1 would otherwise get 4 —
+    // the whole range in one hop).
+    step = sp.stepV > 0
+               ? std::fmax(sp.stepV, std::fmin(sp.stepV * 4.0f, range / 5.0f))
+               : range / 20.0f;
     if (step <= 0) step = range / 20.0f;
     // pingpong: ~4s per half sweep; walk: 2 steps/sec.
     rate = (mode == WALK) ? 2.0f : range / 4.0f;
@@ -74,9 +80,10 @@ class ModStore {
   }
 
   // Register/update a mod for `key`. mode OFF removes it. `curVal` seeds the
-  // starting value/phase so enabling doesn't jump.
+  // starting value/phase so enabling doesn't jump. `quant` (the param's spec
+  // step) makes written values snap to sensible increments — pass 0 to skip.
   void set(const char* key, uint8_t mode, float mn, float mx, float rate,
-           float step, float curVal) {
+           float step, float curVal, float quant = 0) {
     if (mode == OFF) {
       remove(key);
       return;
@@ -94,6 +101,7 @@ class ModStore {
     e->maxV = mx;
     e->rate = rate;
     e->step = step;
+    e->quant = quant;
     if (!e->started) {
       float v = curVal;
       if (v < mn) v = mn;
@@ -114,6 +122,17 @@ class ModStore {
       }
   }
 
+  // Snap a value to the entry's quantum (spec step), clamped to [min,max].
+  // Internal state stays continuous; only the WRITTEN value snaps, so e.g.
+  // "plane count" only ever lands on whole steps while the walk/scrub
+  // underneath advances smoothly.
+  static float snapped(const Entry& e, float v) {
+    if (e.quant > 0) v = e.minV + roundf((v - e.minV) / e.quant) * e.quant;
+    if (v < e.minV) v = e.minV;
+    if (v > e.maxV) v = e.maxV;
+    return v;
+  }
+
   // Advance every mod and write its live value into `params` so render() sees
   // it. Call once per frame with millis().
   void tick(Params& params, uint32_t now) {
@@ -122,7 +141,7 @@ class ModStore {
       const float range = e.maxV - e.minV;
       if (e.mode == PINGPONG) {
         if (range <= 0) {
-          params.setNum(e.key, e.minV);
+          params.setNum(e.key, snapped(e, e.minV));
           continue;
         }
         float dt = (int32_t)(now - e.lastMs) / 1000.0f;
@@ -133,7 +152,7 @@ class ModStore {
         e.phase = fmodf(e.phase, 2.0f);
         if (e.phase < 0) e.phase += 2.0f;
         const float tri = e.phase <= 1.0f ? e.phase : 2.0f - e.phase;
-        params.setNum(e.key, e.minV + range * tri);
+        params.setNum(e.key, snapped(e, e.minV + range * tri));
       } else if (e.mode == WALK) {
         const float period = e.rate > 0 ? 1000.0f / e.rate : 1000.0f;
         int guard = 0;
@@ -151,7 +170,7 @@ class ModStore {
         }
         // Re-sync the clock if we blew past the guard (long stall).
         if ((int32_t)(now - e.lastMs) >= (int32_t)period) e.lastMs = now;
-        params.setNum(e.key, e.value);
+        params.setNum(e.key, snapped(e, e.value));
       }
     }
   }
