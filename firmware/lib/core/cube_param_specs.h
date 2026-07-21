@@ -96,7 +96,7 @@ static const ParamSpec kSpecs_bar_eq[] = {
     {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.05f, 0.9f, "", ""},
 };
 static const ParamSpec kSpecs_spiral[] = {
-    {"axis", "Layer axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "z", "z,y,x"},
+    {"axis", "Layer axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "z", "z,y,x,cycle"},
     {"speed", "Draw speed (cells/s)", 0, 2.0f, 60.0f, 1.0f, 18.0f, "", ""},
     {"layerDelay", "Layer phase delay (s)", 0, 0.0f, 1.0f, 0.02f, 0.14f, "", ""},
     {"twist", "Quarter-turns across height", 0, 0.0f, 4.0f, 1.0f, 1.0f, "", ""},

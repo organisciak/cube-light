@@ -72,7 +72,9 @@ network state. When a console password is set (WiFi page), they ask for it
 <div class="prow"><label>Beat</label><div class="meter"><div id="mBeat"></div></div></div>
 <div class="prow"><label>Raw RMS / frames</label><output id="mRaw" style="min-width:160px;text-align:left"></output></div>
 <div class="prow"><label>Channel</label><select id="micCh"><option value="right">right</option><option value="left">left</option></select></div>
-<div class="prow"><label>Squelch (raw RMS)</label><input type="number" id="micSq" style="flex:1" min="0" step="5"></div>
+<div class="prow"><label>Squelch (raw RMS)</label><input type="range" id="micSqR" style="flex:1" min="0" max="500" step="5"><input type="number" id="micSq" style="flex:0 0 66px" min="0" step="5"></div>
+<div class="prow"><label>Live raw RMS</label><output id="micSqLive" style="min-width:80px;text-align:left;color:#7ab0ff">–</output></div>
+<p style="font-size:12px;color:#888;line-height:1.5;margin:4px 0 10px">Soft-knee gate: audio is fully silenced below squelch/2, ramps up in between, and is fully open at squelch and above. Watch the live RMS while it's quiet, then set squelch just above that idle level.</p>
 <div class="prow"><button class="pri" id="micApply">Apply mic config</button></div>
 </details>
 
@@ -101,40 +103,64 @@ function drawMic(){
 }
 $('micToggle').onclick=async()=>{micOn=!micOn;drawMic();await post('/api/mic?on='+(micOn?1:0))};
 const T={NUM:0,BOOL:1,ENUM:2,PAL:3,STR:4};
+// Bucket a param by key/type into a Pattern/Audio/Color subsection. Pure
+// JS heuristic — the C++ ParamSpec struct is untouched.
+function paramGroup(sp){
+  const k=sp.key;
+  if(sp.type===T.PAL||sp.type===5||k==='r'||k==='g'||k==='b'||k==='sat'||k==='pos'||k==='palette'||/[RGB]$/.test(k)||/[Cc]olor|Tint|hue/.test(k))return 'Color';
+  if(/Gain|[Bb]eat|[Ll]evel|[Aa]udio|mic|attack|release|gamma/.test(k))return 'Audio';
+  return 'Pattern';
+}
+function makeRow(sp,d,group){
+  const row=document.createElement('div');row.className='prow';
+  // Audio-group params drive another param — audio can push it past the max.
+  if(group==='Audio')row.title='Audio can push this parameter beyond the slider maximum (up to ~2x by default).';
+  const lab=document.createElement('label');lab.textContent=sp.label;row.appendChild(lab);
+  let ctl,out=null;
+  if(sp.type===T.BOOL){
+    ctl=document.createElement('input');ctl.type='checkbox';ctl.checked=sp.value==='1';
+    ctl.onchange=()=>post(`/api/param?type=bool&key=${sp.key}&v=${ctl.checked?1:0}`);
+  }else if(sp.type===T.ENUM||sp.type===T.PAL){
+    ctl=document.createElement('select');
+    const opts=sp.type===T.PAL?d.palettes:sp.options.split(',');
+    for(const o of opts){const e=document.createElement('option');e.value=e.textContent=o;ctl.appendChild(e)}
+    ctl.value=sp.value;
+    ctl.onchange=()=>post(`/api/param?type=str&key=${sp.key}&v=${encodeURIComponent(ctl.value)}`);
+  }else if(sp.type===T.STR){
+    ctl=document.createElement('input');ctl.type='text';ctl.value=sp.value;
+    ctl.onchange=()=>post(`/api/param?type=str&key=${sp.key}&v=${encodeURIComponent(ctl.value)}`);
+  }else{
+    ctl=document.createElement('input');ctl.type='range';
+    ctl.min=sp.min;ctl.max=sp.max;ctl.step=sp.step||0.01;ctl.value=parseFloat(sp.value);
+    out=document.createElement('output');out.textContent=(+sp.value).toFixed(2).replace(/\.?0+$/,'');
+    ctl.oninput=()=>{out.textContent=(+ctl.value).toFixed(2).replace(/\.?0+$/,'')};
+    ctl.onchange=()=>post(`/api/param?type=num&key=${sp.key}&v=${ctl.value}`);
+  }
+  row.appendChild(ctl);if(out)row.appendChild(out);
+  return row;
+}
 async function loadParams(){
   const d=await (await fetch('/api/params')).json();
   const box=$('params');box.innerHTML='';
-  for(const sp of d.specs){
-    const row=document.createElement('div');row.className='prow';
-    const lab=document.createElement('label');lab.textContent=sp.label;row.appendChild(lab);
-    let ctl,out=null;
-    if(sp.type===T.BOOL){
-      ctl=document.createElement('input');ctl.type='checkbox';ctl.checked=sp.value==='1';
-      ctl.onchange=()=>post(`/api/param?type=bool&key=${sp.key}&v=${ctl.checked?1:0}`);
-    }else if(sp.type===T.ENUM||sp.type===T.PAL){
-      ctl=document.createElement('select');
-      const opts=sp.type===T.PAL?d.palettes:sp.options.split(',');
-      for(const o of opts){const e=document.createElement('option');e.value=e.textContent=o;ctl.appendChild(e)}
-      ctl.value=sp.value;
-      ctl.onchange=()=>post(`/api/param?type=str&key=${sp.key}&v=${encodeURIComponent(ctl.value)}`);
-    }else if(sp.type===T.STR){
-      ctl=document.createElement('input');ctl.type='text';ctl.value=sp.value;
-      ctl.onchange=()=>post(`/api/param?type=str&key=${sp.key}&v=${encodeURIComponent(ctl.value)}`);
-    }else{
-      ctl=document.createElement('input');ctl.type='range';
-      ctl.min=sp.min;ctl.max=sp.max;ctl.step=sp.step||0.01;ctl.value=parseFloat(sp.value);
-      out=document.createElement('output');out.textContent=(+sp.value).toFixed(2).replace(/\.?0+$/,'');
-      ctl.oninput=()=>{out.textContent=(+ctl.value).toFixed(2).replace(/\.?0+$/,'')};
-      ctl.onchange=()=>post(`/api/param?type=num&key=${sp.key}&v=${ctl.value}`);
-    }
-    row.appendChild(ctl);if(out)row.appendChild(out);
-    box.appendChild(row);
+  const groups={Pattern:[],Audio:[],Color:[]};
+  for(const sp of d.specs)groups[paramGroup(sp)].push(sp);
+  for(const g of ['Pattern','Audio','Color']){
+    if(!groups[g].length)continue;
+    const h=document.createElement('div');h.textContent=g;
+    h.style.cssText='font-size:12px;color:#7ab0ff;margin:16px 0 2px;text-transform:uppercase;letter-spacing:.06em';
+    box.appendChild(h);
+    for(const sp of groups[g])box.appendChild(makeRow(sp,d,g));
   }
 }
 $('saveParams').onclick=async()=>{await post('/api/params/save');$('saveParams').textContent='Saved ✓';setTimeout(()=>$('saveParams').textContent='Save as power-on defaults 🔒',1500)};
 $('resetParams').onclick=async()=>{await post('/api/params/reset');loadParams()};
 $('factoryParams').onclick=async()=>{await post('/api/params/factory');loadParams()};
-$('micApply').onclick=()=>post(`/api/miccfg?ch=${$('micCh').value}&squelch=${$('micSq').value}`);
+const applyMic=()=>post(`/api/miccfg?ch=${$('micCh').value}&squelch=${$('micSq').value}`);
+$('micApply').onclick=applyMic;
+$('micSqR').oninput=()=>{$('micSq').value=$('micSqR').value};
+$('micSqR').onchange=applyMic;
+$('micSq').oninput=()=>{$('micSqR').value=$('micSq').value};
+$('micSq').onchange=applyMic;
 let micInit=false;
 setInterval(async()=>{
   try{
@@ -143,7 +169,8 @@ setInterval(async()=>{
     $('mLevelV').textContent=a.level.toFixed(2);
     $('mBeat').style.width=Math.round(a.beat*100)+'%';
     $('mRaw').textContent=`rms ${a.rms} · dc ${a.dc} · raw ${a.rawMin}..${a.rawMax} · ${a.frames} frames`;
-    if(!micInit){micInit=true;$('micCh').value=a.channel;$('micSq').value=a.squelch}
+    $('micSqLive').textContent=a.rms;
+    if(!micInit){micInit=true;$('micCh').value=a.channel;$('micSq').value=$('micSqR').value=a.squelch}
   }catch(e){}
 },700);
 $('pattern').onchange=async e=>{await post('/api/pattern?id='+encodeURIComponent(e.target.value));loadParams()};

@@ -39,10 +39,18 @@ void buildSpiralPath() {
 float s_lastT = 0;
 float s_phase = 0;
 
+// "cycle" axis mode: the effective layer axis advances z -> y -> x -> z each
+// time the spiral completes a full pass (draw + unwind) through the cube.
+const char kAxisCycle[3] = {'z', 'y', 'x'};
+int s_axisIndex = 0;
+int s_lastPass = 0;
+
 void init(PatternCtx& ctx) {
   buildSpiralPath();
   s_lastT = ctx.t;
   s_phase = 0;
+  s_axisIndex = 0;
+  s_lastPass = 0;
   std::memset(ctx.buffer, 0, NUM_LEDS * 3);
 }
 
@@ -70,6 +78,16 @@ void render(PatternCtx& ctx) {
   const float cycle = 2.0f * len;
   s_phase += speed * (1.0f + ctx.audio->level * levelGain) * dt;
 
+  // Detect full-pass boundaries: s_phase advances by `cycle` for one complete
+  // draw+unwind. When axis == "cycle", advance the effective layer axis each
+  // time a new pass completes.
+  const int pass = (int)std::floor(s_phase / cycle);
+  if (axis == 'c' && pass > s_lastPass) {
+    s_axisIndex = (s_axisIndex + (pass - s_lastPass)) % 3;
+  }
+  s_lastPass = pass;
+  const char layerAxis = axis == 'c' ? kAxisCycle[s_axisIndex] : axis;
+
   for (int h = 0; h < N; h++) {
     const float raw = s_phase - h * layerDelay * speed;
     const float pph = std::fmod(std::fmod(raw, cycle) + cycle, cycle);
@@ -96,8 +114,9 @@ void render(PatternCtx& ctx) {
       if (useP) samplePalette(pal, t01, t, rgb);
       else hsvToRgb(t01 * 0.8f, sat, 1.0f, rgb);
       const int o =
-          (axis == 'z' ? ctx.idx(cx, cy, h)
-                       : axis == 'y' ? ctx.idx(cx, h, cy) : ctx.idx(h, cx, cy)) *
+          (layerAxis == 'z' ? ctx.idx(cx, cy, h)
+                            : layerAxis == 'y' ? ctx.idx(cx, h, cy)
+                                               : ctx.idx(h, cx, cy)) *
           3;
       const uint8_t rr = (uint8_t)std::lround(rgb[0] * k);
       const uint8_t gg = (uint8_t)std::lround(rgb[1] * k);
