@@ -9,7 +9,7 @@ static bool mounted = false;
 // Map a display name to a filesystem-safe path. Distinct names that reduce to
 // the same slug collide (last save wins) — acceptable for this foundation;
 // the display name is preserved verbatim inside the file's "name" field.
-static String pathFor(const String& name) {
+String presetSlug(const String& name) {
   String slug;
   for (size_t i = 0; i < name.length() && slug.length() < 40; i++) {
     const char c = name[i];
@@ -21,7 +21,11 @@ static String pathFor(const String& name) {
     }
   }
   if (slug.length() == 0) slug = "preset";
-  return "/presets/" + slug + ".json";
+  return slug;
+}
+
+static String pathFor(const String& name) {
+  return "/presets/" + presetSlug(name) + ".json";
 }
 
 void presetsBegin() {

@@ -966,6 +966,115 @@ void setupWebServer() {
       playlist.dwellSec = server.arg("dwellSec").toFloat();
     server.send(200, "text/plain", "ok");
   });
+  // Download presets as a JSON file (Content-Disposition triggers a browser
+  // save). ?name=<n> exports one preset object; no arg exports the whole
+  // library as a bundle {"version":1,"presets":[<preset objects>]}. The bundle
+  // shape is exactly what /api/presets/import consumes, so the round-trip is
+  // download -> hand-edit / AI-edit -> re-import. Owner-only.
+  server.on("/api/presets/export", HTTP_GET, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    if (server.hasArg("name")) {
+      JsonDocument doc;
+      if (!presetRead(server.arg("name"), doc)) {
+        server.send(404, "text/plain", "no such preset");
+        return;
+      }
+      String out;
+      serializeJson(doc, out);
+      server.sendHeader("Content-Disposition",
+                        "attachment; filename=\"" + presetSlug(server.arg("name")) + ".json\"");
+      server.send(200, "application/json", out);
+      return;
+    }
+    PresetMeta metas[kMaxPresets];
+    const int n = presetList(metas, kMaxPresets);
+    String out = "{\"version\":1,\"presets\":[";
+    bool first = true;
+    for (int i = 0; i < n; i++) {
+      JsonDocument doc;
+      if (!presetRead(metas[i].name, doc)) continue;
+      String one;
+      serializeJson(doc, one);
+      if (!first) out += ',';
+      out += one;
+      first = false;
+    }
+    out += "]}";
+    server.sendHeader("Content-Disposition", "attachment; filename=\"cube-presets.json\"");
+    server.send(200, "application/json", out);
+  });
+  // Import presets from a JSON body (raw request body, read via arg("plain")).
+  // Accepts a bundle {"version":..,"presets":[..]}, a bare array of preset
+  // objects, or a single preset object. Each preset OVERWRITES any existing one
+  // with the same slug (import replaces, per spec). Entries missing name or
+  // pattern are skipped; new presets beyond kMaxPresets are skipped once the
+  // cap is hit (overwrites of existing presets are always allowed). Returns
+  // {"imported":n,"overwritten":n,"skipped":n}. Owner-only.
+  server.on("/api/presets/import", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    JsonDocument doc;
+    if (deserializeJson(doc, server.arg("plain"))) {
+      server.send(400, "text/plain", "invalid json");
+      return;
+    }
+    PresetMeta metas[kMaxPresets];
+    int count = presetList(metas, kMaxPresets);
+    int imported = 0, overwritten = 0, skipped = 0;
+    auto importOne = [&](JsonObject o) {
+      const char* nm = o["name"] | "";
+      const char* pat = o["pattern"] | "";
+      if (!nm[0] || !pat[0]) { skipped++; return; }
+      const String name = nm;
+      JsonDocument tmp;
+      const bool exists = presetRead(name, tmp);
+      if (!exists && count >= kMaxPresets) { skipped++; return; }
+      JsonDocument out;
+      out.set(o);  // deep copy of this preset object
+      if (out["priority"].isNull()) out["priority"] = 3;
+      if (out["dwellSec"].isNull()) out["dwellSec"] = 20.0f;
+      presetWrite(name, out);
+      if (exists) overwritten++;
+      else { imported++; count++; }
+    };
+    if (doc["presets"].is<JsonArray>()) {
+      for (JsonObject o : doc["presets"].as<JsonArray>()) importOne(o);
+    } else if (doc.is<JsonArray>()) {
+      for (JsonObject o : doc.as<JsonArray>()) importOne(o);
+    } else if (doc.is<JsonObject>()) {
+      importOne(doc.as<JsonObject>());
+    } else {
+      server.send(400, "text/plain", "invalid json");
+      return;
+    }
+    server.send(200, "application/json",
+                "{\"imported\":" + String(imported) + ",\"overwritten\":" +
+                    String(overwritten) + ",\"skipped\":" + String(skipped) + "}");
+  });
+  // Rename a preset's display name. Writes the preset under the new slug and
+  // deletes the old file if the slug changed. If ?to already exists (different
+  // slug), it is OVERWRITTEN — same replace semantics as import. Owner-only.
+  server.on("/api/presets/rename", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    const String from = server.arg("from");
+    const String to = server.arg("to");
+    if (from.length() == 0 || to.length() == 0) {
+      server.send(400, "text/plain", "from and to required");
+      return;
+    }
+    JsonDocument doc;
+    if (!presetRead(from, doc)) {
+      server.send(404, "text/plain", "no such preset");
+      return;
+    }
+    doc["name"] = to;
+    presetWrite(to, doc);
+    if (presetSlug(from) != presetSlug(to)) presetDelete(from);
+    if (playlist.current == from) playlist.current = to;
+    server.send(200, "text/plain", "ok");
+  });
   // ---- playlist cycling ----
   // Configure/toggle the cycle. Owner-only, EXCEPT a guest may pause
   // (enabled=0) so a party-goer can stop the rotation on a pattern they like.

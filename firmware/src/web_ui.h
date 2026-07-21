@@ -74,6 +74,10 @@ pattern below won't show until it stops.</div>
   <input type="text" id="presetName" placeholder="Save current as…">
   <button id="presetSaveBtn" class="pri">Save</button>
 </div>
+<div class="prow" id="presetIO" style="display:none">
+  <button id="presetExport" title="Download all presets as JSON">⬇ Export</button>
+  <label class="pri" style="cursor:pointer" title="Import presets from a JSON file (overwrites matching names)">⬆ Import<input type="file" id="presetImport" accept="application/json,.json" style="display:none"></label>
+</div>
 </details>
 
 <button class="pri" id="guestReset" style="display:none;width:100%;padding:12px;margin-top:18px">Alright, broken it in enough? Set it back →</button>
@@ -191,6 +195,9 @@ async function loadPresets(){
     load.onclick=async()=>{await post('/api/presets/load?name='+encodeURIComponent(p.name));refresh()};
     row.appendChild(load);
     if(!isGuest){
+      const ren=document.createElement('button');ren.textContent='✎';ren.title='Rename';
+      ren.onclick=async()=>{const nn=prompt('Rename "'+p.name+'" to:',p.name);if(!nn||!nn.trim()||nn.trim()===p.name)return;await fetch('/api/presets/rename?from='+encodeURIComponent(p.name)+'&to='+encodeURIComponent(nn.trim()),{method:'POST'});loadPresets()};
+      row.appendChild(ren);
       const del=document.createElement('button');del.textContent='✕';del.title='Delete';
       del.onclick=async()=>{if(confirm('Delete "'+p.name+'"?')){await post('/api/presets/delete?name='+encodeURIComponent(p.name));loadPresets()}};
       row.appendChild(del);
@@ -198,12 +205,23 @@ async function loadPresets(){
     box.appendChild(row);
   }
   $('presetSave').style.display=isGuest?'none':'flex';
+  $('presetIO').style.display=isGuest?'none':'flex';
   renderPlRows(list);
 }
 $('presetSaveBtn').onclick=async()=>{
   const n=$('presetName').value.trim();if(!n)return;
   await post('/api/presets/save?name='+encodeURIComponent(n));
   $('presetName').value='';loadPresets();
+};
+$('presetExport').onclick=()=>{location.href='/api/presets/export'};
+$('presetImport').onchange=async(e)=>{
+  const f=e.target.files[0];if(!f)return;
+  const text=await f.text();e.target.value='';
+  const r=await fetch('/api/presets/import',{method:'POST',body:text});
+  let s=null;try{s=await r.json()}catch(_){}
+  if(s)alert('Imported '+s.imported+', overwritten '+s.overwritten+', skipped '+s.skipped);
+  else alert('Import failed');
+  loadPresets();
 };
 // ---- playlist sidebar ----
 let plState={};

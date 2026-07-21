@@ -29,6 +29,7 @@ struct PresetMeta {
 constexpr int kMaxPresets = 40;
 
 void presetsBegin();                         // mount LittleFS (idempotent)
+String presetSlug(const String& name);       // filesystem slug for a display name
 int presetList(PresetMeta* out, int max);    // metadata only; returns count
 bool presetRead(const String& name, JsonDocument& doc);
 bool presetWrite(const String& name, const JsonDocument& doc);
