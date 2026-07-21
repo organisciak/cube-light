@@ -433,25 +433,80 @@ const char kSnakeHtml[] = R"HTML(<!doctype html>
   .zrow{display:flex;gap:10px;margin-top:14px;width:284px}
   .zrow button{flex:1;height:70px;font-size:20px}
   #st{margin-top:20px;font-size:13px;color:#777;min-height:16px}
+  #calBtn{margin-top:18px;background:#181820;border:1px solid #34343f;color:#9ab;
+       border-radius:10px;padding:9px 14px;font-size:13px;cursor:pointer}
+  /* calibration overlay */
+  #cal{position:fixed;inset:0;background:#0b0b0ef2;display:none;flex-direction:column;
+       align-items:center;justify-content:center;z-index:40;padding:20px;text-align:center}
+  #cal.on{display:flex}
+  #cal h2{font-size:16px;color:#ddd;margin:0 0 6px;font-weight:600}
+  #cal p{font-size:13px;color:#9a9aa8;margin:0 0 20px;max-width:300px;line-height:1.5}
+  #cal .prog{font-size:12px;color:#666;margin-bottom:14px}
+  #cal .pad button:active{background:#3a7a3a}
+  #cal .row{display:flex;gap:12px;margin-top:22px}
+  #cal .row button{background:#1c1c24;border:1px solid #34343f;border-radius:10px;
+       color:#bbb;font-size:13px;padding:9px 16px;cursor:pointer}
 </style></head><body>
 <h1>cube-light · game pad</h1>
 <div class="pad">
-  <span class="blank"></span><button data-d="2">▲</button><span class="blank"></span>
-  <button data-d="1">◀</button><button data-d="3">▼</button><button data-d="0">▶</button>
+  <span class="blank"></span><button data-b="up">▲</button><span class="blank"></span>
+  <button data-b="left">◀</button><button data-b="down">▼</button><button data-b="right">▶</button>
 </div>
 <div class="zrow"><button data-d="4">Z ▲ up</button><button data-d="5">Z ▼ down</button></div>
 <div id="st"></div>
+<button id="calBtn">⤢ Calibrate directions</button>
+
+<div id="cal">
+  <div class="prog" id="calProg"></div>
+  <h2>Which way is the arrow pointing?</h2>
+  <p>The cube shows a bright arrow aimed at a glowing edge. Tap the button that points that way from where you stand.</p>
+  <div class="pad">
+    <span class="blank"></span><button data-cb="up">▲</button><span class="blank"></span>
+    <button data-cb="left">◀</button><span class="blank"></span><button data-cb="right">▶</button>
+    <span class="blank"></span><button data-cb="down">▼</button><span class="blank"></span>
+  </div>
+  <div class="row"><button id="calCancel">Cancel</button></div>
+</div>
 <script>
 const st=document.getElementById('st');
-document.querySelectorAll('button[data-d]').forEach(b=>{
+// Live play: horizontal buttons are player-relative (btn=), z buttons direct (dir=).
+document.querySelectorAll('.pad button[data-b],.zrow button[data-d]').forEach(b=>{
   b.addEventListener('pointerdown',async e=>{
     e.preventDefault();
     if(navigator.vibrate)navigator.vibrate(8);
+    const q=b.dataset.b?('btn='+b.dataset.b):('dir='+b.dataset.d);
     try{
-      const r=await fetch('/api/game?dir='+b.dataset.d,{method:'POST'});
+      const r=await fetch('/api/game?'+q,{method:'POST'});
       const t=await r.text();
       st.textContent=t==='ok'?'':t;
     }catch(err){st.textContent='connection lost — retry'}
+  });
+});
+// Direction calibration wizard.
+const cal=document.getElementById('cal'),calProg=document.getElementById('calProg');
+async function calRefresh(){
+  try{const r=await fetch('/api/snakecal/state');const s=await r.json();
+    if(!s.active){cal.classList.remove('on');return;}
+    calProg.textContent='Step '+(s.index+1)+' of '+s.total;
+  }catch(e){}
+}
+document.getElementById('calBtn').addEventListener('click',async()=>{
+  await fetch('/api/snakecal/start',{method:'POST'});
+  cal.classList.add('on');calRefresh();
+});
+document.getElementById('calCancel').addEventListener('click',async()=>{
+  await fetch('/api/snakecal/cancel',{method:'POST'});
+  cal.classList.remove('on');st.textContent='calibration canceled';
+});
+cal.querySelectorAll('button[data-cb]').forEach(b=>{
+  b.addEventListener('click',async()=>{
+    if(navigator.vibrate)navigator.vibrate(8);
+    try{
+      const r=await fetch('/api/snakecal/map?button='+b.dataset.cb,{method:'POST'});
+      const j=await r.json();
+      if(j.done){cal.classList.remove('on');st.textContent='directions saved ✓';}
+      else calRefresh();
+    }catch(e){st.textContent='connection lost — retry'}
   });
 });
 </script></body></html>)HTML";

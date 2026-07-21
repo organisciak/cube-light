@@ -21,6 +21,7 @@ extern const Pattern kLitPixel;
 extern const Pattern kBuildMap;
 extern const Pattern kFireworks;
 extern const Pattern kSnake3d;
+extern const Pattern kSnakeCal;
 extern const Pattern kPacman3d;
 extern const Pattern kBarEq;
 extern const Pattern kSpiral;
@@ -48,6 +49,7 @@ const Pattern* const kPatterns[] = {
     &kText3d,
     &kFireworks,
     &kSnake3d,
+    &kSnakeCal,
     &kPacman3d,
     &kSolid,
     &kIndexWalk,

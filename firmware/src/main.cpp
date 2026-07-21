@@ -407,6 +407,59 @@ void setPatternById(const String& id) {
   }
 }
 
+// ---- snake direction calibration ----------------------------------------------
+//
+// The horizontal D-pad buttons (up/down/left/right) are player-relative: which
+// way each points depends on where the player stands. This maps each of those
+// four buttons to a cube-relative horizontal SnakeDir (±x / ±y). Vertical
+// (z up/down) is invariant to the player's facing, so it bypasses this map.
+//
+// The wizard (/api/snakecal/*) lights one horizontal cube edge/face at a time
+// with an arrow (the "snake-cal" pattern) and asks "which button points here?".
+// The button the player taps becomes that cube direction.
+//
+// snakeDirMap is indexed by button (0=up 1=down 2=left 3=right) and holds a
+// SnakeDir value (0..3). Default is the pre-calibration D-pad wiring:
+//   up->YP(2)  down->YN(3)  left->XN(1)  right->XP(0)
+uint8_t snakeDirMap[4] = {2, 3, 1, 0};
+
+// Prompt order over the four horizontal cube directions.
+const SnakeDir kCalTargets[4] = {SnakeDir::XP, SnakeDir::XN, SnakeDir::YP, SnakeDir::YN};
+int snakeCalIndex = -1;        // -1 = not calibrating; else 0..3
+String snakeCalReturnPattern;  // pattern to restore when the wizard ends
+
+int snakeButtonIndex(const String& b) {
+  if (b == "up") return 0;
+  if (b == "down") return 1;
+  if (b == "left") return 2;
+  if (b == "right") return 3;
+  return -1;
+}
+
+const char* snakeDirName(int d) {
+  static const char* kNames[6] = {"x+", "x-", "y+", "y-", "z+", "z-"};
+  return (d >= 0 && d < 6) ? kNames[d] : "?";
+}
+
+void loadSnakeDirMap() {
+  prefs.begin("cube", true);
+  uint8_t tmp[4];
+  const size_t n = prefs.getBytes("snkdir", tmp, sizeof(tmp));
+  prefs.end();
+  if (n == 4) {
+    bool valid = true;
+    for (int i = 0; i < 4; i++)
+      if (tmp[i] > 3) valid = false;
+    if (valid) memcpy(snakeDirMap, tmp, 4);
+  }
+}
+
+void saveSnakeDirMap() {
+  prefs.begin("cube", false);
+  prefs.putBytes("snkdir", snakeDirMap, 4);
+  prefs.end();
+}
+
 // ---- presets ------------------------------------------------------------------
 //
 // Snapshot the live pattern + its effective params into a named preset file,
@@ -1383,10 +1436,25 @@ void setupWebServer() {
   // without the console password. Input queueing is harmless.
   server.on("/snake", HTTP_GET, []() { server.send(200, "text/html", kSnakeHtml); });
   server.on("/api/game", HTTP_POST, []() {
-    const int d = server.arg("dir").toInt();
-    if (d < 0 || d > 5) {
-      server.send(400, "text/plain", "bad dir");
-      return;
+    // Two input forms:
+    //   btn=up|down|left|right — player-relative horizontal, run through the
+    //     calibrated direction map to a cube-relative ±x/±y SnakeDir.
+    //   dir=0..5              — direct SnakeDir (used for the invariant z
+    //     up/down buttons and any programmatic control). Kept for compat.
+    int d;
+    if (server.hasArg("btn")) {
+      const int bi = snakeButtonIndex(server.arg("btn"));
+      if (bi < 0) {
+        server.send(400, "text/plain", "bad btn");
+        return;
+      }
+      d = snakeDirMap[bi];
+    } else {
+      d = server.arg("dir").toInt();
+      if (d < 0 || d > 5) {
+        server.send(400, "text/plain", "bad dir");
+        return;
+      }
     }
     if (settings.patternId == "snake-3d") {
       params.setStr("mode", "manual");  // grabbing the pad takes over from auto
@@ -1399,6 +1467,57 @@ void setupWebServer() {
     } else {
       server.send(200, "text/plain", "switch the cube to Snake or Pac-Man first");
     }
+  });
+  // ---- snake direction calibration wizard ----
+  // Start: remember the current pattern, switch to the arrow visual, prompt 0.
+  server.on("/api/snakecal/start", HTTP_POST, []() {
+    snakeCalReturnPattern = settings.patternId;
+    snakeCalIndex = 0;
+    setPatternById("snake-cal");
+    params.setNum("dir", (float)(int)kCalTargets[0]);
+    server.send(200, "text/plain", "ok");
+  });
+  // State: current prompt for the page ("which button points at this edge?").
+  server.on("/api/snakecal/state", HTTP_GET, []() {
+    String json = "{\"active\":";
+    json += (snakeCalIndex >= 0) ? "true" : "false";
+    json += ",\"index\":" + String(snakeCalIndex < 0 ? 0 : snakeCalIndex);
+    json += ",\"total\":4,\"target\":\"";
+    json += (snakeCalIndex >= 0) ? snakeDirName((int)kCalTargets[snakeCalIndex]) : "";
+    json += "\",\"map\":{\"up\":\"" + String(snakeDirName(snakeDirMap[0])) + "\",\"down\":\"" +
+            String(snakeDirName(snakeDirMap[1])) + "\",\"left\":\"" +
+            String(snakeDirName(snakeDirMap[2])) + "\",\"right\":\"" +
+            String(snakeDirName(snakeDirMap[3])) + "\"}}";
+    server.send(200, "application/json", json);
+  });
+  // Map: the tapped button becomes the currently-prompted cube direction.
+  server.on("/api/snakecal/map", HTTP_POST, []() {
+    if (snakeCalIndex < 0) {
+      server.send(409, "text/plain", "not calibrating");
+      return;
+    }
+    const int bi = snakeButtonIndex(server.arg("button"));
+    if (bi < 0) {
+      server.send(400, "text/plain", "bad button");
+      return;
+    }
+    snakeDirMap[bi] = (uint8_t)(int)kCalTargets[snakeCalIndex];
+    snakeCalIndex++;
+    if (snakeCalIndex >= 4) {
+      saveSnakeDirMap();
+      snakeCalIndex = -1;
+      setPatternById(snakeCalReturnPattern.length() ? snakeCalReturnPattern : String("snake-3d"));
+      server.send(200, "application/json", "{\"done\":true}");
+    } else {
+      params.setNum("dir", (float)(int)kCalTargets[snakeCalIndex]);
+      server.send(200, "application/json", "{\"done\":false}");
+    }
+  });
+  // Cancel: abandon the wizard, restore the prior pattern (map unchanged).
+  server.on("/api/snakecal/cancel", HTTP_POST, []() {
+    snakeCalIndex = -1;
+    setPatternById(snakeCalReturnPattern.length() ? snakeCalReturnPattern : String("snake-3d"));
+    server.send(200, "text/plain", "ok");
   });
   server.on("/wifi", HTTP_GET, []() {
     if (guestBlocked()) return;
@@ -1431,6 +1550,7 @@ void setupWebServer() {
 void setup() {
   Serial.begin(115200);
   loadSettings();
+  loadSnakeDirMap();  // player-relative D-pad -> cube-direction map
   presetsBegin();  // mount LittleFS for preset storage
   applyColorOrder(settings.colorOrder);
   applyGeometry();
