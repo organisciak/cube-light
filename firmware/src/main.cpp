@@ -49,7 +49,7 @@
 #include "cube_power.h"
 #include "web_ui.h"
 
-#define CUBE_VERSION "0.2.0"
+#define CUBE_VERSION "0.3.0"
 
 #ifndef CUBE_LED_PIN
 #define CUBE_LED_PIN 16
