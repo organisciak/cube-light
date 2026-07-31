@@ -1,0 +1,16 @@
+# Mirror of stock WLED's 4MB ESP32 partition table (WLED_ESP32_4MB_1MB_FS).
+#
+# Used by env:gledopto309 (the no-USB backup board): its first flash of our
+# firmware goes through stock WLED's OTA updater, which can only replace an
+# app — the factory partition table stays on the flash forever (redrawing it
+# needs a wire). So the build must size-check against WLED's 1.5MB app slot,
+# not our custom 1.875MB table (partitions_cube.csv). At runtime the table
+# on the chip governs; this file exists for checkprogsize + documentation.
+#
+# Name,     Type, SubType, Offset,   Size,     Flags
+nvs,        data, nvs,     0x9000,   0x5000,
+otadata,    data, ota,     0xe000,   0x2000,
+app0,       app,  ota_0,   0x10000,  0x180000,
+app1,       app,  ota_1,   0x190000, 0x180000,
+spiffs,     data, spiffs,  0x310000, 0xE0000,
+coredump,   data, coredump,0x3F0000, 0x10000,
