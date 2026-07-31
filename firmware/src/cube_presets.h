@@ -24,6 +24,8 @@ struct PresetMeta {
   String pattern;
   int priority;
   float dwellSec;
+  bool reactive;  // music-reactive vs ambient; drives sidebar grouping and
+                  // lets the playlist skip reactive presets while the mic is off
 };
 
 constexpr int kMaxPresets = 40;
@@ -34,5 +36,9 @@ int presetList(PresetMeta* out, int max);    // metadata only; returns count
 bool presetRead(const String& name, JsonDocument& doc);
 bool presetWrite(const String& name, const JsonDocument& doc);
 bool presetDelete(const String& name);
+// Heuristic default for the "reactive" flag: inherently audio-driven pattern,
+// or any audio-drive param dialed above zero. The owner can override per
+// preset, so this only has to be a good guess.
+bool presetLooksReactive(const String& patternId, JsonObjectConst params);
 
 }  // namespace cube

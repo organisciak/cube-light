@@ -21,7 +21,8 @@
 //    local pattern until their timeout lapses (same semantics as WLED), so
 //    the Node dev server keeps working unchanged.
 //  - Function button short-press cycles patterns (works with no network).
-//  - ArduinoOTA (password-protected) for wireless reflashing.
+//  - ArduinoOTA (password-protected) for wireless reflashing — DISARMED until
+//    the owner opens a 15-minute window from /admin (see armOta()).
 //
 // Not yet here: mic capture + FFT -> BeatDetector, per-pattern params over
 // the API, /snake controller page, full React-app WS contract.
@@ -504,6 +505,9 @@ void savePresetSnapshot(const String& name, int priority, float dwellSec) {
       }
     }
   }
+  // Classify music-reactive vs ambient from the snapshot; the owner can flip
+  // it later via /api/presets/meta.
+  doc["reactive"] = presetLooksReactive(settings.patternId, p);
   // Carry per-param modulation with the preset — ALWAYS emit the object, even
   // when empty, so "no modulation" round-trips (loading a mod-free preset
   // must clear any NVS-loaded mods rather than inherit them).
@@ -617,23 +621,28 @@ void playlistLoadIndex(const PresetMeta* metas, int i) {
 }
 
 // Shuffle pick: weighted by priority, priority-0 excluded, avoiding an
-// immediate repeat when another eligible preset exists. Returns -1 if nothing
-// is eligible (every preset is priority 0).
-int playlistPickWeighted(const PresetMeta* metas, int n, const String& avoid) {
+// immediate repeat when another eligible preset exists. With micFilter set,
+// music-reactive presets are excluded too (mic off = they'd sit static).
+// Returns -1 if nothing is eligible.
+int playlistPickWeighted(const PresetMeta* metas, int n, const String& avoid,
+                         bool micFilter) {
+  auto eligible = [&](int i) {
+    return metas[i].priority > 0 && !(micFilter && metas[i].reactive);
+  };
   int elExAvoid = 0;
   for (int i = 0; i < n; i++)
-    if (metas[i].priority > 0 && metas[i].name != avoid) elExAvoid++;
+    if (eligible(i) && metas[i].name != avoid) elExAvoid++;
   const bool skipAvoid = elExAvoid > 0;  // only avoid repeat when alternatives exist
   int total = 0;
   for (int i = 0; i < n; i++) {
-    if (metas[i].priority <= 0) continue;
+    if (!eligible(i)) continue;
     if (skipAvoid && metas[i].name == avoid) continue;
     total += metas[i].priority;
   }
   if (total <= 0) return -1;
   int r = (int)(esp_random() % (uint32_t)total);
   for (int i = 0; i < n; i++) {
-    if (metas[i].priority <= 0) continue;
+    if (!eligible(i)) continue;
     if (skipAvoid && metas[i].name == avoid) continue;
     r -= metas[i].priority;
     if (r < 0) return i;
@@ -651,9 +660,14 @@ void playlistAdvance(int dir) {
     playlist.enabled = false;
     return;
   }
+  // Mic off: auto-play only ambient presets (reactive ones would sit static).
+  // If that filter empties the pool, ignore it rather than kill the cycle.
+  const bool micFilter = !settings.micEnabled;
   int pick;
   if (playlist.shuffle) {
-    pick = playlistPickWeighted(metas, n, playlist.current);
+    pick = playlistPickWeighted(metas, n, playlist.current, micFilter);
+    if (pick < 0 && micFilter)
+      pick = playlistPickWeighted(metas, n, playlist.current, false);
     if (pick < 0) {  // all priority 0 -> nothing to auto-play
       playlist.enabled = false;
       return;
@@ -663,6 +677,10 @@ void playlistAdvance(int dir) {
     for (int i = 0; i < n; i++)
       if (metas[i].name == playlist.current) { cur = i; break; }
     pick = cur < 0 ? 0 : (((cur + dir) % n) + n) % n;
+    if (micFilter) {  // walk past reactive presets; give up after a full lap
+      for (int step = 0; step < n && metas[pick].reactive; step++)
+        pick = ((pick + dir) % n + n) % n;
+    }
   }
   playlistLoadIndex(metas, pick);
 }
@@ -828,6 +846,39 @@ void netTick() {
   }
 }
 
+// ---- OTA arming (reflash prank-proofing) --------------------------------------
+//
+// ArduinoOTA no longer runs all the time: on a playa/party network anyone
+// with espota.py and the password (a guessable default, or shoulder-surfed)
+// could push their own firmware. Wireless reflashing is DISARMED until the
+// owner opens a time-limited window from the admin page; it re-locks itself
+// after 15 minutes, and any reboot disarms. Arming also refuses to run while
+// the AP/OTA password is still the factory default. USB flashing can't be
+// blocked in software (the ROM bootloader always wins) — that's what a
+// locked enclosure is for.
+bool otaArmed = false;
+uint32_t otaDisarmAtMs = 0;
+constexpr uint32_t kOtaWindowMs = 15UL * 60UL * 1000UL;
+
+void armOta() {
+  if (!otaArmed) {
+    ArduinoOTA.setHostname("cube");
+    ArduinoOTA.setPassword(settings.apPass.c_str());
+    ArduinoOTA.begin();
+    otaArmed = true;
+  }
+  otaDisarmAtMs = millis() + kOtaWindowMs;  // re-arm extends the window
+  Serial.println("[ota] armed (15 min window)");
+}
+
+void disarmOta() {
+  if (otaArmed) {
+    ArduinoOTA.end();
+    otaArmed = false;
+    Serial.println("[ota] disarmed");
+  }
+}
+
 // ---- web UI -------------------------------------------------------------------
 
 WebServer server(80);
@@ -897,6 +948,9 @@ void handleStatus() {
   json += ",\"fps\":" + String(CUBE_FPS);
   json += ",\"uptimeS\":" + String(millis() / 1000);
   json += ",\"micOn\":" + String(settings.micEnabled ? "true" : "false");
+  json += ",\"otaArmed\":" + String(otaArmed ? "true" : "false");
+  json += ",\"otaRemainingSec\":" +
+          String(otaArmed ? max(0, (int)((int32_t)(otaDisarmAtMs - millis()) / 1000)) : 0);
   json += ",\"guest\":" + String(isGuestRequest() ? "true" : "false");
   json += ",\"live\":" +
           String((int32_t)(liveUntilMs - millis()) > 0 ? "true" : "false");
@@ -925,22 +979,20 @@ void handleStatus() {
 void setupWebServer();
 bool servicesStarted = false;
 
-// mDNS, OTA, the realtime UDP listener, and the HTTP console. Must only run
+// mDNS, the realtime UDP listener, and the HTTP console. Must only run
 // once a network interface exists; starting them during the STA join
 // corrupts the WiFi blob's management-frame callbacks (InstructionFetchError
-// in sta_recv_mgmt) and crash-loops the chip.
+// in sta_recv_mgmt) and crash-loops the chip. OTA is deliberately absent —
+// see armOta() above.
 void startNetServices() {
   if (servicesStarted) return;
   servicesStarted = true;
   MDNS.begin("cube");  // http://cube.local/
-  ArduinoOTA.setHostname("cube");
-  ArduinoOTA.setPassword(settings.apPass.c_str());
-  ArduinoOTA.begin();
   udp.begin(kRealtimePort);
   setupWebServer();
   audioCaptureStart();
   audioCaptureReconfigure(settings.micLeft, settings.micSquelch);
-  Serial.println("[net] services up (mdns/ota/udp/http/mic)");
+  Serial.println("[net] services up (mdns/udp/http/mic; ota disarmed)");
 }
 
 void setupWebServer() {
@@ -1102,6 +1154,24 @@ void setupWebServer() {
     if (activePattern->init) activePattern->init(ctx);
     server.send(200, "text/plain", "ok");
   });
+  // Arm/disarm the wireless-reflash window (see armOta above). Owner-only,
+  // and arming refuses to run on the factory-default password.
+  server.on("/api/ota", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    if (server.arg("on") == "1") {
+      if (settings.apPass == CUBE_AP_PASS) {
+        server.send(400, "text/plain",
+                    "AP/OTA password is still the factory default — set your own "
+                    "on the WiFi page before arming updates");
+        return;
+      }
+      armOta();
+    } else {
+      disarmOta();
+    }
+    server.send(200, "text/plain", "ok");
+  });
   // ---- presets ----
   // List saved presets (metadata only; params omitted). Open to guests.
   server.on("/api/presets", HTTP_GET, []() {
@@ -1115,7 +1185,8 @@ void setupWebServer() {
       nm.replace("\"", "\\\"");
       json += "{\"name\":\"" + nm + "\",\"pattern\":\"" + metas[i].pattern +
               "\",\"priority\":" + String(metas[i].priority) +
-              ",\"dwellSec\":" + String(metas[i].dwellSec, 0) + "}";
+              ",\"dwellSec\":" + String(metas[i].dwellSec, 0) +
+              ",\"reactive\":" + String(metas[i].reactive ? "true" : "false") + "}";
     }
     json += "]";
     server.send(200, "application/json", json);
@@ -1188,6 +1259,7 @@ void setupWebServer() {
     }
     if (server.hasArg("priority"))
       doc["priority"] = constrain((int)server.arg("priority").toInt(), 0, 5);
+    if (server.hasArg("reactive")) doc["reactive"] = server.arg("reactive") == "1";
     // Clamp dwell >= 1s: 0/garbage would make the live playlist advance every
     // frame (a strobe of preset switches).
     const float dwell = max(1.0f, server.arg("dwellSec").toFloat());
@@ -1276,6 +1348,9 @@ void setupWebServer() {
       // Clamp hand-edited metadata to the same ranges save/meta enforce.
       out["priority"] = constrain((int)(out["priority"] | 3), 0, 5);
       out["dwellSec"] = max(1.0f, (float)(out["dwellSec"] | 20.0f));
+      if (out["reactive"].isNull())  // hand-authored file: classify it
+        out["reactive"] =
+            presetLooksReactive(String(pat), out["params"].as<JsonObjectConst>());
       presetWrite(name, out);
       if (exists) overwritten++;
       else { imported++; count++; }
@@ -1637,6 +1712,15 @@ void setupWebServer() {
     String page = kWifiHtml;
     page.replace("%SSID%", settings.wifiSsid);
     page.replace("%UIPASS%", settings.uiPass.length() ? "(unchanged)" : "(not set)");
+    page.replace("%APWARN%",
+                 settings.apPass == CUBE_AP_PASS
+                     ? "<p style=\"background:#3a1d1d;border:1px solid #8a4438;"
+                       "color:#f0b0a0;border-radius:6px;padding:10px\">⚠ Still the "
+                       "factory password (<b>cubelight</b>) — anyone who's seen the "
+                       "project can join the hotspot. Set your own before taking "
+                       "the cube out in public. Wireless reflashing won't arm "
+                       "until you do.</p>"
+                     : "");
     server.send(200, "text/html", page);
   });
   server.on("/wifi", HTTP_POST, []() {
@@ -1694,7 +1778,10 @@ void loop() {
     delay(2);
     return;
   }
-  ArduinoOTA.handle();
+  if (otaArmed) {
+    ArduinoOTA.handle();
+    if ((int32_t)(millis() - otaDisarmAtMs) > 0) disarmOta();  // window lapsed
+  }
   server.handleClient();
   handleRealtime();
   handleButton();

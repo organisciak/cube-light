@@ -74,6 +74,7 @@ break anything permanent — just reset when you're done.</div>
 pattern below won't show until it stops.</div>
 <label>Pattern</label>
 <select id="pattern"></select>
+<a id="gameLink" href="/snake" style="display:none;background:#2a8050;color:#fff;text-align:center;text-decoration:none;border-radius:8px;padding:14px;font-size:16px;margin-top:10px">🎮 Grab the game pad →</a>
 
 <label>Mic reactivity</label>
 <button id="micToggle" style="width:100%;padding:10px;font-size:15px"></button>
@@ -129,6 +130,7 @@ let lastPat=null;
 function applyStatus(s){
   const sel=$('pattern');
   if(document.activeElement!==sel)sel.value=s.pattern;
+  gameLink(s.pattern);
   micOn=s.micOn; drawMic();
   isGuest=!!s.guest;
   $('advTogWrap').style.display=isGuest?'none':'flex';  // modulation is owner-only
@@ -277,45 +279,63 @@ async function loadParams(){
     for(const sp of groups[g])box.appendChild(makeRow(sp,d,g));
   }
 }
+// A game is on: surface a big link to the controller page.
+function gameLink(pat){$('gameLink').style.display=(pat==='snake-3d'||pat==='pacman-3d')?'block':'none'}
 $('resetParams').onclick=async()=>{await post('/api/params/reset');loadParams()};
 $('guestReset').onclick=async()=>{
   await post('/api/params/reset');loadParams();
   $('guestReset').textContent='Set back to how it was ✓ thanks!';
   setTimeout(()=>$('guestReset').textContent='Alright, broken it in enough? Set it back →',2200);
 };
-$('pattern').onchange=async e=>{await post('/api/pattern?id='+encodeURIComponent(e.target.value));loadParams()};
+$('pattern').onchange=async e=>{gameLink(e.target.value);await post('/api/pattern?id='+encodeURIComponent(e.target.value));loadParams()};
 // One list, one place: the sidebar is the preset manager. Rows: tap name to
 // show it; dwell + priority edit inline; ✎ rename, ✕ delete (owners only).
 const esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
 let presetNames=[];
+let anyAmbient=false;  // drives the "ambient only" playlist hint when mic is off
+function presetRow(p){
+  const row=document.createElement('div');row.className='plrow';row.dataset.name=p.name;
+  const nm=document.createElement('div');nm.className='plname';nm.title='Show this preset';
+  nm.innerHTML='<div>'+esc(p.name)+'</div><div class="plpat"><span class="plreact">'+(p.reactive?'🎵':'🌙')+'</span> '+esc(p.pattern)+'</div>';
+  nm.onclick=async()=>{await post('/api/presets/load?name='+encodeURIComponent(p.name));refresh()};
+  // Owners can reclassify: the 🎵/🌙 marker is a toggle.
+  const rx=nm.querySelector('.plreact');
+  rx.title=p.reactive?'Music-reactive (tap to mark ambient)':'Ambient (tap to mark music-reactive)';
+  if(!isGuest){rx.style.cursor='pointer';
+    rx.onclick=async e=>{e.stopPropagation();await post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&reactive='+(p.reactive?0:1));loadPresets()}}
+  row.appendChild(nm);
+  if(isGuest){
+    const m=document.createElement('span');m.className='plmeta';m.textContent=(+p.dwellSec)+'s · ★'+p.priority;row.appendChild(m);
+  }else{
+    const dw=document.createElement('input');dw.type='number';dw.min=1;dw.value=p.dwellSec;dw.title='Seconds this preset shows in the cycle';
+    dw.onchange=()=>{const v=Math.max(1,Math.round(+dw.value)||1);dw.value=v;post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&dwellSec='+v)};
+    const pr=document.createElement('input');pr.type='number';pr.min=0;pr.max=5;pr.value=p.priority;pr.title='Shuffle priority 0-5 (5 = most often, 0 = never auto-plays)';
+    pr.onchange=()=>{const v=Math.min(5,Math.max(0,Math.round(+pr.value)||0));pr.value=v;post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&priority='+v)};
+    const ren=document.createElement('button');ren.className='plbtn';ren.textContent='✎';ren.title='Rename';
+    ren.onclick=async()=>{const nn=prompt('Rename "'+p.name+'" to:',p.name);if(!nn||!nn.trim()||nn.trim()===p.name)return;
+      if(presetNames.includes(nn.trim())){alert('A preset with that name already exists');return}
+      await post('/api/presets/rename?from='+encodeURIComponent(p.name)+'&to='+encodeURIComponent(nn.trim()));loadPresets()};
+    const del=document.createElement('button');del.className='plbtn';del.textContent='✕';del.title='Delete';
+    del.onclick=async()=>{if(confirm('Delete "'+p.name+'"?')){await post('/api/presets/delete?name='+encodeURIComponent(p.name));loadPresets()}};
+    row.append(dw,pr,ren,del);
+  }
+  return row;
+}
 async function loadPresets(){
   const list=await (await fetch('/api/presets')).json();
   presetNames=list.map(p=>p.name);
+  anyAmbient=list.some(p=>!p.reactive);
   const box=$('plRows');box.innerHTML='';
   $('plCap').style.display=list.length&&!isGuest?'flex':'none';
   if(!list.length)box.innerHTML='<div style="font-size:12px;color:#777;line-height:1.5">No presets yet — dial in a pattern you like, then save it below.</div>';
-  for(const p of list){
-    const row=document.createElement('div');row.className='plrow';row.dataset.name=p.name;
-    const nm=document.createElement('div');nm.className='plname';nm.title='Show this preset';
-    nm.innerHTML='<div>'+esc(p.name)+'</div><div class="plpat">'+esc(p.pattern)+'</div>';
-    nm.onclick=async()=>{await post('/api/presets/load?name='+encodeURIComponent(p.name));refresh()};
-    row.appendChild(nm);
-    if(isGuest){
-      const m=document.createElement('span');m.className='plmeta';m.textContent=(+p.dwellSec)+'s · ★'+p.priority;row.appendChild(m);
-    }else{
-      const dw=document.createElement('input');dw.type='number';dw.min=1;dw.value=p.dwellSec;dw.title='Seconds this preset shows in the cycle';
-      dw.onchange=()=>{const v=Math.max(1,Math.round(+dw.value)||1);dw.value=v;post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&dwellSec='+v)};
-      const pr=document.createElement('input');pr.type='number';pr.min=0;pr.max=5;pr.value=p.priority;pr.title='Shuffle priority 0-5 (5 = most often, 0 = never auto-plays)';
-      pr.onchange=()=>{const v=Math.min(5,Math.max(0,Math.round(+pr.value)||0));pr.value=v;post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&priority='+v)};
-      const ren=document.createElement('button');ren.className='plbtn';ren.textContent='✎';ren.title='Rename';
-      ren.onclick=async()=>{const nn=prompt('Rename "'+p.name+'" to:',p.name);if(!nn||!nn.trim()||nn.trim()===p.name)return;
-        if(presetNames.includes(nn.trim())){alert('A preset with that name already exists');return}
-        await post('/api/presets/rename?from='+encodeURIComponent(p.name)+'&to='+encodeURIComponent(nn.trim()));loadPresets()};
-      const del=document.createElement('button');del.className='plbtn';del.textContent='✕';del.title='Delete';
-      del.onclick=async()=>{if(confirm('Delete "'+p.name+'"?')){await post('/api/presets/delete?name='+encodeURIComponent(p.name));loadPresets()}};
-      row.append(dw,pr,ren,del);
-    }
-    box.appendChild(row);
+  // Two shelves: music-reactive vs ambient. Mic off = the auto-cycle plays
+  // only the ambient shelf.
+  for(const [title,items] of [['🎵 Music-reactive',list.filter(p=>p.reactive)],['🌙 Ambient',list.filter(p=>!p.reactive)]]){
+    if(!items.length)continue;
+    const h=document.createElement('div');h.textContent=title;
+    h.style.cssText='font-size:11px;color:#8a8fa0;margin:8px 0 4px;letter-spacing:.05em;text-transform:uppercase';
+    box.appendChild(h);
+    for(const p of items)box.appendChild(presetRow(p));
   }
   $('presetSave').style.display=isGuest?'none':'flex';
   $('presetIO').style.display=isGuest?'none':'flex';
@@ -358,7 +378,8 @@ function drawPlaylist(){
   $('plPlay').textContent=plState.enabled?'⏸':'▶';
   $('plShuffle').style.background=plState.shuffle?'#2a5aa5':'#26262e';
   $('plStatus').textContent=plState.enabled
-    ?('Now: '+(plState.current||'—')+' · '+Math.max(0,Math.round(plState.dwellRemainingSec))+'s left')
+    ?('Now: '+(plState.current||'—')+' · '+Math.max(0,Math.round(plState.dwellRemainingSec))+'s left'
+      +(!micOn&&anyAmbient?' · 🌙 ambient only':''))
     :'Cycle paused';
   markNow();
 }
@@ -420,6 +441,7 @@ lock yourself out.</p>
 <div id="testresult"></div>
 
 <h2>Hotspot &amp; flashing</h2>
+%APWARN%
 <label>AP / OTA password (min 8 chars)</label>
 <div class="pw"><input type="password" name="appass" id="appass" placeholder="(unchanged)"><button type="button" data-for="appass">show</button></div>
 
@@ -505,9 +527,14 @@ const char kSnakeHtml[] = R"HTML(<!doctype html>
        color:#bbb;font-size:13px;padding:9px 16px;cursor:pointer}
   nav{display:flex;gap:14px;font-size:13px;margin-bottom:14px;align-self:flex-start}
   nav a{color:#7ab0ff;text-decoration:none}
+  .games{display:flex;gap:10px;width:284px;margin-bottom:16px}
+  .games button{flex:1;height:52px;font-size:16px;background:#1c1c24;border:1px solid #34343f;
+       border-radius:12px;color:#e8e8f0;cursor:pointer;touch-action:manipulation}
+  .games button.on{background:#2a5aa5;border-color:#3a6bb0;color:#fff}
 </style></head><body>
 <nav><a href="/">&larr; Console</a></nav>
 <h1>cube-light · game pad</h1>
+<div class="games"><button data-g="snake-3d">🐍 Snake</button><button data-g="pacman-3d">👾 Pac-Man</button></div>
 <div class="pad">
   <span class="blank"></span><button data-b="up">▲</button><span class="blank"></span>
   <button data-b="left">◀</button><button data-b="down">▼</button><button data-b="right">▶</button>
@@ -529,6 +556,17 @@ const char kSnakeHtml[] = R"HTML(<!doctype html>
 </div>
 <script>
 const st=document.getElementById('st');
+// Quick start: jump straight into a game (pattern switching is guest-open).
+// The lit button tracks whatever the cube is actually running.
+const gameBtns=document.querySelectorAll('.games button');
+function markGame(id){gameBtns.forEach(b=>b.classList.toggle('on',b.dataset.g===id))}
+gameBtns.forEach(b=>b.addEventListener('click',async()=>{
+  if(navigator.vibrate)navigator.vibrate(8);
+  try{await fetch('/api/pattern?id='+b.dataset.g,{method:'POST'});markGame(b.dataset.g);st.textContent=''}
+  catch(e){st.textContent='connection lost — retry'}
+}));
+async function syncGame(){try{const s=await (await fetch('/api/status')).json();markGame(s.pattern)}catch(e){}}
+syncGame();setInterval(syncGame,3000);
 // Live play: horizontal buttons are player-relative (btn=), z buttons direct (dir=).
 document.querySelectorAll('.pad button[data-b],.zrow button[data-d]').forEach(b=>{
   b.addEventListener('pointerdown',async e=>{
@@ -800,6 +838,14 @@ password is set (WiFi page), they ask for it (username <b>cube</b>).</p>
 <p style="font-size:12px;color:#888;line-height:1.5;margin:4px 0 10px">Soft-knee gate: audio is fully silenced below squelch/2, ramps up in between, and is fully open at squelch and above. Watch the live RMS while it's quiet, then set squelch just above that idle level.</p>
 <div class="prow"><button class="pri" id="micApply">Apply mic config</button></div>
 
+<h2>Firmware updates (OTA) 🔒</h2>
+<p>Wireless reflashing stays <b>locked</b> until you arm a 15-minute window
+here — so nobody at the party can push their own firmware, even if they know
+the hotspot password. It re-locks on its own, and any reboot locks it too.
+(USB flashing can't be blocked in software — keep the enclosure locked.)</p>
+<div class="prow"><button class="pri" id="otaBtn">…</button></div>
+<div id="otaMsg" style="font-size:13px;min-height:18px;color:#e0b76a"></div>
+
 <h2>Hardware &amp; network</h2>
 <p><a href="/leds">LED outputs &rarr;</a> &nbsp;·&nbsp; <a href="/calibrate">Calibrate wiring &rarr;</a> &nbsp;·&nbsp; <a href="/wifi">WiFi &amp; security &rarr;</a></p>
 
@@ -807,11 +853,23 @@ password is set (WiFi page), they ask for it (username <b>cube</b>).</p>
 <script>
 const $=id=>document.getElementById(id);
 async function post(url){await fetch(url,{method:'POST'})}
+let otaArmed=false;
 async function refresh(){
   const s=await (await fetch('/api/status')).json();
   $('bright').value=Math.round(s.brightness*100);$('brightv').textContent=$('bright').value+'%';
   $('supply').value=s.supplyMA;$('order').value=s.colorOrder;$('up').value=s.up;
+  otaArmed=!!s.otaArmed;
+  $('otaBtn').textContent=otaArmed
+    ?('🔓 Armed — lock now (auto-locks in '+Math.max(1,Math.round(s.otaRemainingSec/60))+' min)')
+    :'Arm wireless reflashing for 15 min';
+  $('otaBtn').style.background=otaArmed?'#8a4438':'#2a5aa5';
 }
+$('otaBtn').onclick=async()=>{
+  const r=await fetch('/api/ota?on='+(otaArmed?0:1),{method:'POST'});
+  $('otaMsg').textContent=r.ok?'':await r.text();
+  refresh();
+};
+setInterval(refresh,5000);
 $('bright').oninput=e=>{$('brightv').textContent=e.target.value+'%'};
 $('bright').onchange=e=>post('/api/brightness?v='+(e.target.value/100));
 $('supply').onchange=e=>post('/api/supply?ma='+e.target.value);

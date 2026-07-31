@@ -59,6 +59,12 @@ int presetList(PresetMeta* out, int max) {
         s_cache[s_cacheN].pattern = doc["pattern"] | "";
         s_cache[s_cacheN].priority = doc["priority"] | 3;
         s_cache[s_cacheN].dwellSec = doc["dwellSec"] | 20.0f;
+        // Presets saved before the flag existed classify themselves.
+        s_cache[s_cacheN].reactive =
+            doc["reactive"].isNull()
+                ? presetLooksReactive(s_cache[s_cacheN].pattern,
+                                      doc["params"].as<JsonObjectConst>())
+                : doc["reactive"].as<bool>();
         if (s_cache[s_cacheN].name.length()) s_cacheN++;
       }
       f.close();
@@ -94,6 +100,33 @@ bool presetDelete(const String& name) {
   if (!mounted) return false;
   s_cacheDirty = true;
   return LittleFS.remove(pathFor(name));
+}
+
+bool presetLooksReactive(const String& patternId, JsonObjectConst params) {
+  // These patterns are audio visualizers regardless of param values.
+  if (patternId == "audio-ripple" || patternId == "spectrum-discs" ||
+      patternId == "bar-eq")
+    return true;
+  if (params.isNull()) return false;
+  // Any audio-drive param above zero counts. Key vocabulary across the spec
+  // table: *Gain/gain, audio*, beat*, *Kick, *Pulse, *Sparkle, levelBoost.
+  // beatThreshold is a trigger level, not a gain, so it's excluded.
+  for (JsonPairConst kv : params) {
+    String lk = kv.key().c_str();
+    lk.toLowerCase();
+    if (lk == "beatthreshold") continue;
+    const bool audioKey = lk.indexOf("gain") >= 0 || lk.indexOf("audio") >= 0 ||
+                          lk.indexOf("beat") >= 0 || lk.indexOf("kick") >= 0 ||
+                          lk.indexOf("pulse") >= 0 || lk.indexOf("sparkle") >= 0 ||
+                          lk == "levelboost";
+    if (!audioKey) continue;
+    if (kv.value().is<bool>()) {
+      if (kv.value().as<bool>()) return true;
+    } else if (kv.value().as<float>() > 0.0f) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace cube

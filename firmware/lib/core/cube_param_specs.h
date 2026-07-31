@@ -29,7 +29,9 @@ static const ParamSpec kSpecs_wavy_sheet[] = {
     {"amp", "Wave amplitude", 0, 0.0f, 4.0f, 0.1f, 1.2f, "", ""},
     {"speed", "Wave speed", 0, 0.0f, 3.0f, 0.05f, 0.6f, "", ""},
     {"wavelength", "Wavelength (pixels)", 0, 2.0f, 30.0f, 0.5f, 8.0f, "", ""},
-    {"thickness", "Sheet thickness", 0, 0.4f, 4.0f, 0.1f, 1.0f, "", ""},
+    {"thickness", "Sheet thickness", 0, 0.4f, 1.5f, 0.1f, 1.0f, "", ""},
+    {"edgeSoft", "Edge softness", 0, 0.0f, 3.0f, 0.05f, 1.0f, "", ""},
+    {"audioDecay", "Audio decay (s)", 0, 0.0f, 2.0f, 0.05f, 0.0f, "", ""},
     {"levelGain", "Audio level → amp", 0, 0.0f, 6.0f, 0.1f, 2.0f, "", ""},
     {"bassGain", "Bass → spike", 0, 0.0f, 6.0f, 0.1f, 2.5f, "", ""},
     {"midGain", "Mid → wave mod", 0, 0.0f, 3.0f, 0.05f, 0.5f, "", ""},
@@ -55,7 +57,7 @@ static const ParamSpec kSpecs_rain[] = {
     {"audioBoost", "Audio spawn boost", 0, 0.0f, 4.0f, 0.1f, 2.0f, "", ""},
 };
 static const ParamSpec kSpecs_rotating_planes[] = {
-    {"speed", "Rotation speed", 0, 0.0f, 2.0f, 0.01f, 0.3f, "", ""},
+    {"speed", "Rotation speed", 0, 0.0f, 1.0f, 0.01f, 0.3f, "", ""},
     {"sweepSpeed", "Sweep speed", 0, 0.0f, 2.0f, 0.01f, 0.4f, "", ""},
     {"thickness", "Plane thickness", 0, 0.4f, 4.0f, 0.1f, 0.7f, "", ""},
     {"planes", "Plane count", 0, 1.0f, 4.0f, 1.0f, 1.0f, "", ""},
@@ -295,7 +297,7 @@ struct PatternSpecs {
 };
 
 static const PatternSpecs kPatternSpecs[] = {
-    {"wavy-sheet", kSpecs_wavy_sheet, 19},
+    {"wavy-sheet", kSpecs_wavy_sheet, 21},
     {"rain", kSpecs_rain, 8},
     {"rotating-planes", kSpecs_rotating_planes, 13},
     {"audio-ripple", kSpecs_audio_ripple, 8},
