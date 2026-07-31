@@ -188,8 +188,30 @@ void render(PatternCtx& ctx) {
         }
       }
     };
-    drawStack(chars[i0 % charCount], 1.0f - fadeIn);
-    if (fadeIn > 0) drawStack(chars[(i0 + 1) % charCount], fadeIn);
+    // Between words (space chars) the stack normally goes fully dark for a
+    // whole dwell. stackGap softens that: "dot" swaps in a period, "dim"
+    // previews the next real character at low brightness.
+    const char* gapStyle = p.str("stackGap", "blank");
+    auto drawSlot = [&](int slot, float weight) {
+      char ch = chars[slot % charCount];
+      if (ch == ' ' && gapStyle[0] == 'd') {
+        if (gapStyle[1] == 'o') {
+          ch = '.';
+        } else {
+          for (int k = 1; k <= charCount; k++) {
+            const char nc = chars[(slot + k) % charCount];
+            if (nc != ' ') {
+              ch = nc;
+              break;
+            }
+          }
+          weight *= 0.3f;
+        }
+      }
+      drawStack(ch, weight);
+    };
+    drawSlot(i0, 1.0f - fadeIn);
+    if (fadeIn > 0) drawSlot(i0 + 1, fadeIn);
   } else {
     // ring: current char on all 4 vertical faces, cycling through the text.
     s_charPos += baseSpeed * audioMult * 0.5f * dt;

@@ -9,13 +9,13 @@ extern const Pattern kSolid;
 extern const Pattern kWavySheet;
 extern const Pattern kRotatingPlanes;
 extern const Pattern kRain;
-extern const Pattern kFire;
 extern const Pattern kComet;
 extern const Pattern kCloud;
 extern const Pattern kAudioRipple;
 extern const Pattern kSpectrumDiscs;
-extern const Pattern kLife3d;
 extern const Pattern kText3d;
+extern const Pattern kTvStatic;
+extern const Pattern kWander;
 extern const Pattern kIndexWalk;
 extern const Pattern kLitPixel;
 extern const Pattern kBuildMap;
@@ -34,7 +34,6 @@ const Pattern* const kPatterns[] = {
     &kWavySheet,
     &kRotatingPlanes,
     &kRain,
-    &kFire,
     &kComet,
     &kCloud,
     &kAudioRipple,
@@ -45,7 +44,8 @@ const Pattern* const kPatterns[] = {
     &kBounce,
     &kOrbit,
     &kScan,
-    &kLife3d,
+    &kTvStatic,
+    &kWander,
     &kText3d,
     &kFireworks,
     &kSnake3d,

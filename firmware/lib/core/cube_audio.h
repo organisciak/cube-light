@@ -32,6 +32,13 @@ class BeatDetector {
   /** Current beat envelope, 0..1. */
   float envelope() const { return envelope_; }
 
+  /**
+   * Tempo estimate in BPM from the median of recent onset intervals, or 0
+   * when there's no lock (too few plausible intervals, or the last onset is
+   * stale). Patterns treat 0 as "no tempo known".
+   */
+  float bpm(uint32_t nowMs) const;
+
   void reset();
 
  private:
@@ -42,12 +49,21 @@ class BeatDetector {
   static constexpr float kMinLevel = 0.10f;
   static constexpr float kMinRise = 0.04f;
   static constexpr float kDecayS = 0.25f;
+  // Tempo: intervals outside 250..1500ms (240..40 BPM) are discarded as
+  // missed/double-fired onsets; the estimate expires 2.5s after the last one.
+  static constexpr int kIntervals = 8;
+  static constexpr uint32_t kIntervalMinMs = 250;
+  static constexpr uint32_t kIntervalMaxMs = 1500;
+  static constexpr uint32_t kBpmStaleMs = 2500;
 
   float history_[kHistorySize] = {0};
   int historyLen_ = 0;
   int historyHead_ = 0;  // ring buffer write index
   uint32_t lastBeatMs_ = 0;
   float envelope_ = 0;
+  uint16_t intervals_[kIntervals] = {0};  // onset-to-onset gaps, ms, ring
+  int intervalLen_ = 0;
+  int intervalHead_ = 0;
 };
 
 }  // namespace cube

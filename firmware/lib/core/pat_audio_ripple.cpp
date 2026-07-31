@@ -13,6 +13,7 @@ namespace {
 
 struct Ripple {
   float age;
+  float rad;  // integrated so expansion speed can ride the music
   float pos;  // palette position / hue
   float intensity;
 };
@@ -26,7 +27,7 @@ float s_lastLevel = 0;
 
 void spawn(float pos, float intensity) {
   if (s_rippleCount >= kMaxRipples) return;
-  s_ripples[s_rippleCount++] = {0.0f, pos, intensity};
+  s_ripples[s_rippleCount++] = {0.0f, 0.0f, pos, intensity};
 }
 
 void init(PatternCtx& ctx) {
@@ -47,6 +48,7 @@ void render(PatternCtx& ctx) {
 
   const int N = CUBE_N;
   const float speed = p.num("speed", 5.0f);
+  const float levelSpeedGain = p.num("levelSpeedGain", 0.0f);
   const float thickness = std::fmax(0.2f, p.num("thickness", 1.0f));
   const float fade = std::fmax(0.5f, p.num("fade", 2.0f));
   const float autoSpawnRate = p.num("autoSpawn", 0.0f);
@@ -84,12 +86,16 @@ void render(PatternCtx& ctx) {
   std::memset(buffer, 0, NUM_LEDS * 3);
   const float c = (N - 1) / 2.0f;
 
+  // Expansion speed rides the music when levelSpeedGain > 0: loud passages
+  // fling rings outward faster while quiet ones let them crawl.
+  const float effSpeed = speed * (1.0f + clamp01(level) * levelSpeedGain);
   int alive = 0;
   for (int ri = 0; ri < s_rippleCount; ri++) {
     Ripple& rp = s_ripples[ri];
     rp.age += dt;
+    rp.rad += effSpeed * dt;
     if (rp.age > fade) continue;
-    const float rad = rp.age * speed;
+    const float rad = rp.rad;
     if (rad > N * 1.8f) continue;
     const float lifeFrac = 1.0f - rp.age / fade;
     const float intensity = rp.intensity * lifeFrac;

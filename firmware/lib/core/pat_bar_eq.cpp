@@ -32,6 +32,9 @@ void render(PatternCtx& ctx) {
   const float release = std::fmax(0.01f, p.num("release", 0.3f));
   const float beatBoost = clamp01(p.num("beatBoost", 0.2f));
   const float baseHeight = p.num("baseHeight", 0.6f);
+  // "bottom": classic columns rising from z=0. "center": bars grow outward
+  // from the horizontal midplane, mirrored up and down.
+  const bool fromCenter = p.str("origin", "bottom")[0] == 'c';
   const float sat = p.num("sat", 0.9f);
   const char colorBy = p.str("colorBy", "bar")[0];  // 'b'ar | 'h'eight | ba'n'd
   const char colorBy2 = p.str("colorBy", "bar")[2];  // disambiguate bar/band
@@ -66,13 +69,24 @@ void render(PatternCtx& ctx) {
       // 'bar' mode: one solid color per column, scrambled across the palette
       // so adjacent bars contrast instead of blending.
       const float barT = (float)((bi * 7) % (kBars * kBars)) / (kBars * kBars - 1);
+      const float zc = (N - 1) / 2.0f;
       for (int z = 0; z < N; z++) {
-        // Antialiased top: full below, fractional coverage at the crest.
-        const float cover = clamp01(height - z);
-        if (cover <= 0.02f) break;
+        // Antialiased crest: full inside the bar, fractional coverage at the
+        // tip. Center origin measures from the midplane, half the height each
+        // way; the +0.5 keeps the two midplane layers lit at idle heights
+        // (they sit 0.5 voxels off the continuous midline) so the floor
+        // still reads like bottom mode's base.
+        const float cover = fromCenter
+                                ? clamp01(height * 0.5f + 0.5f - std::fabs(z - zc))
+                                : clamp01(height - z);
+        if (cover <= 0.02f) {
+          if (fromCenter) continue;  // below-midplane voxels come later in z order
+          break;
+        }
+        const float hT = fromCenter ? std::fabs(z - zc) / (N - 1 - zc) : (float)z / (N - 1);
         const float t01 = (colorBy == 'b' && colorBy2 == 'n') ? bandPos
                           : colorBy == 'b' ? barT
-                                           : (float)z / (N - 1);
+                                           : hT;
         uint8_t rgb[3];
         if (useP) {
           samplePalette(pal, t01, ctx.t, rgb);

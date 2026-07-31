@@ -118,7 +118,7 @@ bool presetLooksReactive(const String& patternId, JsonObjectConst params) {
     const bool audioKey = lk.indexOf("gain") >= 0 || lk.indexOf("audio") >= 0 ||
                           lk.indexOf("beat") >= 0 || lk.indexOf("kick") >= 0 ||
                           lk.indexOf("pulse") >= 0 || lk.indexOf("sparkle") >= 0 ||
-                          lk == "levelboost";
+                          lk.indexOf("throb") >= 0 || lk == "levelboost";
     if (!audioKey) continue;
     if (kv.value().is<bool>()) {
       if (kv.value().as<bool>()) return true;

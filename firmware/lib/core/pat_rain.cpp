@@ -24,11 +24,13 @@ Drop s_drops[kMaxDrops];
 int s_dropCount = 0;
 float s_lastT = 0;
 float s_pendingSpawnFrac = 0;
+float s_lastBeat = 0;
 
 void init(PatternCtx& ctx) {
   s_dropCount = 0;
   s_lastT = ctx.t;
   s_pendingSpawnFrac = 0;
+  s_lastBeat = 0;
   std::memset(ctx.buffer, 0, NUM_LEDS * 3);
 }
 
@@ -47,6 +49,9 @@ void render(PatternCtx& ctx) {
   const float basePos = p.num("pos", 0.6f);
   const float posJitter = clamp01(p.num("jitter", 0.06f));
   const float audioBoost = p.num("audioBoost", 2.0f);
+  const int beatSpawn = (int)std::fmax(0.0f, std::floor(p.num("beatSpawn", 0.0f)));
+  const char* speedFrom = p.str("speedFrom", "none");
+  const float speedGain = p.num("speedGain", 1.5f);
   const char* paletteName = p.str("palette", "arctic");
   const bool useP = paletteActive(paletteName);
   const PaletteRef pal = resolvePalette(paletteName);
@@ -59,6 +64,10 @@ void render(PatternCtx& ctx) {
   s_pendingSpawnFrac += target * dt;
   int spawnCount = (int)s_pendingSpawnFrac;
   s_pendingSpawnFrac -= spawnCount;
+  // Outright burst on the beat's rising edge, on top of the ambient rate.
+  const float beat = ctx.audio->beat;
+  if (beatSpawn > 0 && beat > 0.5f && s_lastBeat <= 0.5f) spawnCount += beatSpawn;
+  s_lastBeat = beat;
   for (int s = 0; s < spawnCount && s_dropCount < kMaxDrops; s++) {
     Drop& d = s_drops[s_dropCount++];
     d.x = (float)(int)(frand() * N);
@@ -69,11 +78,14 @@ void render(PatternCtx& ctx) {
     d.brightness = 0.85f + frand() * 0.15f;
   }
 
+  // Fall speed rides the music (level or tempo) for all live drops.
+  const float speedMult = audioSpeedMult(*ctx.audio, speedFrom, speedGain);
+
   // Step + render, compacting dead drops in place.
   int alive = 0;
   for (int di = 0; di < s_dropCount; di++) {
     Drop& d = s_drops[di];
-    d.z += d.vz * dt;
+    d.z += d.vz * speedMult * dt;
     if (d.z < -1.0f) continue;
     const int zi = (int)std::lround(d.z);
     if (zi >= 0 && zi < N) {

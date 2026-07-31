@@ -9,6 +9,8 @@ void BeatDetector::reset() {
   historyHead_ = 0;
   lastBeatMs_ = 0;
   envelope_ = 0;
+  intervalLen_ = 0;
+  intervalHead_ = 0;
 }
 
 bool BeatDetector::onFrame(float bass, uint32_t nowMs) {
@@ -37,6 +39,12 @@ bool BeatDetector::onFrame(float bass, uint32_t nowMs) {
   const uint32_t since = nowMs - lastBeatMs_;
   if (bass > avg * kThresholdMult && bass - prevBass > kMinRise &&
       bass > kMinLevel && since > kMinIntervalMs) {
+    // Feed the tempo tracker with plausible onset gaps only.
+    if (lastBeatMs_ != 0 && since >= kIntervalMinMs && since <= kIntervalMaxMs) {
+      intervals_[intervalHead_] = (uint16_t)since;
+      intervalHead_ = (intervalHead_ + 1) % kIntervals;
+      if (intervalLen_ < kIntervals) intervalLen_++;
+    }
     lastBeatMs_ = nowMs;
     envelope_ = 1.0f;
     return true;
@@ -46,6 +54,26 @@ bool BeatDetector::onFrame(float bass, uint32_t nowMs) {
 
 void BeatDetector::decay(float dt) {
   envelope_ = std::fmax(0.0f, envelope_ - dt / kDecayS);
+}
+
+float BeatDetector::bpm(uint32_t nowMs) const {
+  if (intervalLen_ < 4) return 0;                       // not enough evidence
+  if (nowMs - lastBeatMs_ > kBpmStaleMs) return 0;      // music stopped
+  // Median interval (insertion sort of at most 8 values).
+  uint16_t sorted[kIntervals];
+  for (int i = 0; i < intervalLen_; i++) {
+    const uint16_t v = intervals_[i];
+    int j = i;
+    while (j > 0 && sorted[j - 1] > v) {
+      sorted[j] = sorted[j - 1];
+      j--;
+    }
+    sorted[j] = v;
+  }
+  const float medianMs = intervalLen_ % 2 == 1
+                             ? sorted[intervalLen_ / 2]
+                             : (sorted[intervalLen_ / 2 - 1] + sorted[intervalLen_ / 2]) * 0.5f;
+  return 60000.0f / medianMs;
 }
 
 }  // namespace cube

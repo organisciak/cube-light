@@ -327,6 +327,14 @@ void render(PatternCtx& ctx) {
   const float baseSpeed = p.num("baseSpeed", 4.0f);
   const float maxSpeed = p.num("maxSpeed", 12.0f);
   const float lengthForMax = p.num("lengthForMax", 25.0f);
+  // 0 = unlimited. Capped snakes still score on apples but stop growing —
+  // keeps long auto games readable instead of filling the cube.
+  const int maxLen = (int)std::fmax(0.0f, std::floor(p.num("maxLen", 0.0f)));
+  // Auto-only: music speeds the solver up (manual stays fair to fingers).
+  const float autoLevelGain = p.num("autoLevelGain", 0.0f);
+  // Audio throb: body sits throbDepth below full brightness; beats flash it
+  // back to full. 0 = steady (current look).
+  const float throbDepth = clamp01(p.num("throbDepth", 0.0f));
   const PaletteRef pal = resolvePalette(p.str("palette", "spectrum"));
   const float appleR = p.num("appleR", 255.0f);
   const float appleG = p.num("appleG", 40.0f);
@@ -358,7 +366,9 @@ void render(PatternCtx& ctx) {
   }
 
   if (g.alive && g.started) {
-    const float speed = speedHz(g.score, baseSpeed, maxSpeed, lengthForMax);
+    float speed = speedHz(g.score, baseSpeed, maxSpeed, lengthForMax);
+    if (autoMode && autoLevelGain > 0)
+      speed *= 1.0f + autoLevelGain * clamp01(ctx.audio->level);
     const float tickInterval = 1.0f / std::fmax(0.5f, speed);
 
     if (t - g.lastTickT >= tickInterval) {
@@ -397,8 +407,9 @@ void render(PatternCtx& ctx) {
           g.alive = false;
           g.deathStartT = t;
         } else {
-          // unshift new head; pop tail unless eating.
-          const int newLen = ate ? g.length + 1 : g.length;
+          // unshift new head; pop tail unless eating (or already at the cap).
+          const bool grow = ate && (maxLen <= 0 || g.length < maxLen);
+          const int newLen = grow ? g.length + 1 : g.length;
           std::memmove(g.segments + 1, g.segments,
                        (newLen - 1) * sizeof(Segment));
           g.segments[0] = {(int8_t)nx, (int8_t)ny, (int8_t)nz};
@@ -428,12 +439,13 @@ void render(PatternCtx& ctx) {
       buffer[ctx.idx(g.segments[i].x, g.segments[i].y, g.segments[i].z) * 3] = r;
     }
   } else {
+    const float throb = 1.0f - throbDepth * (1.0f - ctx.audio->beat);
     for (int s = 0; s < g.length; s++) {
       const Segment& seg = g.segments[s];
       const float t01 = 1.0f - (float)s / std::fmax(1, g.length);
       uint8_t rgb[3];
       samplePalette(pal, t01, t, rgb);
-      const float fall = 0.35f + 0.65f * t01;
+      const float fall = (0.35f + 0.65f * t01) * throb;
       const int i = ctx.idx(seg.x, seg.y, seg.z) * 3;
       buffer[i] = (uint8_t)std::lround(rgb[0] * fall);
       buffer[i + 1] = (uint8_t)std::lround(rgb[1] * fall);

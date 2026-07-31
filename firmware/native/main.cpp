@@ -67,6 +67,7 @@ void fakeAudio(AudioFrame& audio, double t) {
   const double beatPeriod = 0.5;  // 120 BPM
   const double sinceBeat = std::fmod(t, beatPeriod);
   audio.beat = (float)std::exp(-sinceBeat * 6.0);
+  audio.bpm = 120.0f;
 }
 
 }  // namespace

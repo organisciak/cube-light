@@ -1100,10 +1100,15 @@ void setupWebServer() {
       val.replace("\"", "\\\"");
       for (size_t vi = 0; vi < val.length(); vi++)
         if ((uint8_t)val[vi] < 0x20) val.setCharAt(vi, ' ');
+      // Hover help; authored text may contain quotes, so escape like value.
+      String dsc = sp.desc ? sp.desc : "";
+      dsc.replace("\\", "\\\\");
+      dsc.replace("\"", "\\\"");
       json += "{\"key\":\"" + String(sp.key) + "\",\"label\":\"" + String(sp.label) +
               "\",\"type\":" + String(sp.type) + ",\"min\":" + String(sp.minV, 3) +
               ",\"max\":" + String(sp.maxV, 3) + ",\"step\":" + String(sp.stepV, 3) +
-              ",\"options\":\"" + String(sp.options) + "\",\"value\":\"" + val + "\"";
+              ",\"options\":\"" + String(sp.options) + "\",\"desc\":\"" + dsc +
+              "\",\"value\":\"" + val + "\"";
       // Active-pattern numeric params carry their modulation config, if any.
       const ModStore::Entry* me = isActive ? mods.find(sp.key) : nullptr;
       if (me)
@@ -1470,7 +1475,8 @@ void setupWebServer() {
       if (i) json += ',';
       json += String(af.bands[i], 3);
     }
-    json += "],\"frames\":" + String(st.frames) + ",\"rms\":" + String(st.lastRms, 1) +
+    json += "],\"bpm\":" + String(af.bpm, 1) + ",\"frames\":" + String(st.frames) +
+            ",\"rms\":" + String(st.lastRms, 1) +
             ",\"dc\":" + String(st.lastDc, 1) + ",\"rawMin\":" + String(st.rawMin) +
             ",\"rawMax\":" + String(st.rawMax) +
             ",\"channel\":\"" + String(settings.micLeft ? "left" : "right") + "\"" +

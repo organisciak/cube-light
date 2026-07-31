@@ -14,7 +14,20 @@ struct AudioFrame {
   float level = 0;              // overall level 0..1
   float bands[AUDIO_BANDS] = {0};  // log-spaced bands 0..1
   float beat = 0;               // beat envelope 0..1
+  float bpm = 0;                // tempo estimate; 0 = no lock
 };
+
+// Shared semantics for the "speedFrom"/"speedGain" param pair that several
+// patterns use to tie their motion rate to the music:
+//   none  -> 1
+//   level -> 1 + gain * level
+//   bpm   -> 1 + gain * (bpm / 120), so gain=1 doubles speed at 120 BPM;
+//            no tempo lock (bpm 0) leaves speed unchanged.
+inline float audioSpeedMult(const AudioFrame& a, const char* from, float gain) {
+  if (from[0] == 'l') return 1.0f + gain * a.level;
+  if (from[0] == 'b') return a.bpm > 0 ? 1.0f + gain * (a.bpm / 120.0f) : 1.0f;
+  return 1.0f;
+}
 
 struct PatternCtx {
   uint8_t* buffer;        // NUM_LEDS * 3 RGB triples, mutate in place

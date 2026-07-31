@@ -165,6 +165,7 @@ void captureTask(void*) {
     s_frame.level = s_levelOut;
     for (int b = 0; b < AUDIO_BANDS; b++) s_frame.bands[b] = s_bandOut[b];
     s_frame.beat = s_beat.envelope();
+    s_frame.bpm = s_beat.bpm(millis());
     portEXIT_CRITICAL(&s_mux);
   }
 }

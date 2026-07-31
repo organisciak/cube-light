@@ -187,7 +187,8 @@ const T={NUM:0,BOOL:1,ENUM:2,PAL:3,STR:4};
 function paramGroup(sp){
   const k=sp.key;
   if(sp.type===T.PAL||sp.type===5||k==='r'||k==='g'||k==='b'||k==='sat'||k==='pos'||k==='palette'||/[RGB]$/.test(k)||/[Cc]olor|Tint|hue/.test(k))return 'Color';
-  if(/Gain|[Bb]eat|[Ll]evel|[Aa]udio|mic|attack|release|gamma/.test(k))return 'Audio';
+  if(k==='gray'||k==='grayFlicker')return 'Pattern';  // tv-static background style
+  if(/Gain|[Bb]eat|[Ll]evel|[Aa]udio|mic|attack|release|gamma|throb|speedFrom|bpm/.test(k))return 'Audio';
   return 'Pattern';
 }
 function makeRow(sp,d,group){
@@ -197,6 +198,7 @@ function makeRow(sp,d,group){
   const modActive=sp.mod&&sp.mod.mode&&sp.mod.mode!=='off';
   const lab=document.createElement('label');
   lab.textContent=(modActive?'∿ ':'')+sp.label;
+  if(sp.desc){lab.title=sp.desc;lab.style.cursor='help';lab.style.textDecoration='underline dotted #444'}
   if(modActive)row.classList.add('modded');
   row.appendChild(lab);
   let ctl,out=null;

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "cube_color.h"
 #include "cube_palettes.h"
 #include "cube_pattern.h"
 #include "cube_random.h"
@@ -22,6 +23,7 @@ constexpr int kTrailLen = 8;
 struct Rocket {
   Vec3 pos;
   Vec3 vel;
+  float launchedAt;
   float explodeAt;
   Vec3 trail[kTrailLen];  // head first
   int trailLen;
@@ -44,6 +46,8 @@ Particle s_particles[kMaxParticles];
 int s_particleCount = 0;
 float s_nextLaunchT = 0;
 float s_lastBeatLaunchT = -10;
+float s_lastBeatEnv = 0;   // beat-mode pop edge detection
+float s_lastPopLevel = 0;  // slow-decay level cache for the level-rise pop
 
 // Random launch point on the outside of the cube (biased toward the -z face
 // so most rockets fly up), aimed at a jittered point near the center.
@@ -78,6 +82,7 @@ void launch(float t, float flightTime) {
   r.pos = pos;
   r.vel = {(target.x - pos.x) / flightTime, (target.y - pos.y) / flightTime,
            (target.z - pos.z) / flightTime};
+  r.launchedAt = t;
   r.explodeAt = t + flightTime;
   r.trailLen = 0;
 }
@@ -154,6 +159,8 @@ void init(PatternCtx& ctx) {
   s_particleCount = 0;
   s_nextLaunchT = ctx.t + 0.3f;
   s_lastBeatLaunchT = -10;
+  s_lastBeatEnv = 0;
+  s_lastPopLevel = 0;
   std::memset(ctx.buffer, 0, NUM_LEDS * 3);
 }
 
@@ -178,9 +185,26 @@ void render(PatternCtx& ctx) {
                             : std::fmin(1.0f, p.num("rocketBrightness", 0.95f));
   const bool beatLaunch = p.boolean("beatLaunch", true);
   const float levelBoost = p.num("levelBoost", 0.6f);
+  // "timer": classic — each rocket pops at the end of its flight.
+  // "beat": rockets pop ONLY when the music hits; ones that never get their
+  // moment coast out of the cube unpopped.
+  const bool beatMode = p.str("burstOn", "timer")[0] == 'b';
+  const float popLevelRise = clamp01(p.num("popLevelRise", 0.3f));
 
   const float beat = audio.beat;
   const float level = audio.level;
+
+  // Beat-mode pop trigger: the beat envelope's rising edge, or a sharp level
+  // rise (catches swells the beat detector misses; 0 disables). All rockets
+  // at least 35% into their nominal flight pop together.
+  bool popNow = false;
+  if (beatMode) {
+    const bool beatEdge = beat > 0.5f && s_lastBeatEnv <= 0.5f;
+    const bool levelEdge = popLevelRise > 0 && level - s_lastPopLevel > popLevelRise;
+    popNow = beatEdge || levelEdge;
+  }
+  s_lastBeatEnv = beat;
+  s_lastPopLevel = std::fmax(level, s_lastPopLevel - dt * 1.5f);
 
   // Schedule launches.
   if (t >= s_nextLaunchT) {
@@ -203,10 +227,22 @@ void render(PatternCtx& ctx) {
     for (int k = r.trailLen - 1; k > 0; k--) r.trail[k] = r.trail[k - 1];
     r.trail[0] = r.pos;
 
-    if (t >= r.explodeAt) {
+    bool explode;
+    bool gone = false;
+    if (beatMode) {
+      const float flightFrac =
+          (t - r.launchedAt) / std::fmax(0.1f, r.explodeAt - r.launchedAt);
+      explode = popNow && flightFrac >= 0.35f;
+      // Missed its moment: coast on past the target and out of the cube.
+      gone = !explode && (r.pos.x < -3 || r.pos.x > N + 2 || r.pos.y < -3 ||
+                          r.pos.y > N + 2 || r.pos.z < -3 || r.pos.z > N + 2);
+    } else {
+      explode = t >= r.explodeAt;
+    }
+    if (explode) {
       const int burstScale = (int)std::lround(baseParticles * (1.0f + level * levelBoost));
       spawnBurst(r.pos, burstScale, burstSpeed, pal, t, lifetime);
-    } else {
+    } else if (!gone) {
       s_rockets[aliveRockets++] = r;
     }
   }
