@@ -110,6 +110,31 @@ automation:
 whitespace. The `Content-Type: application/octet-stream` header matters:
 without it the body is parsed as form data and the base64 gets mangled.)
 
+Two gotchas learned deploying this for real (2026-08-04):
+- **shell_command with templates is NOT run through a shell** — HA renders the
+  template then `shlex.split`s and `exec`s it, so pipes only work via the
+  `/bin/bash -c '...'` wrapper shown above. Keep the whole pipeline inside the
+  single quotes.
+- **Adding a brand-new top-level key (like `shell_command:`) needs a full HA
+  restart** — `reload_all` only reloads integrations that were present at
+  startup.
+
+For a manually-triggered version, pair the shell_command with a script and
+put it on a dashboard:
+
+```yaml
+script:
+  cube_show_tv_amp_art:
+    alias: "Cube: Show TV Amp Art"
+    icon: mdi:image-album
+    sequence:
+      - service: shell_command.cube_show_art
+        data:
+          art: >-
+            {{ state_attr('media_player.tv_amp','entity_picture_local')
+               or state_attr('media_player.tv_amp','entity_picture') }}
+```
+
 ## No broker? REST works too
 
 Everything the MQTT entities do is also plain HTTP on the cube:
