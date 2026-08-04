@@ -8,6 +8,7 @@
 #include "cube_font10.h"
 #include "cube_palettes.h"
 #include "cube_pattern.h"
+#include "cube_throb.h"
 
 namespace cube {
 namespace {
@@ -16,11 +17,13 @@ namespace {
 float s_lastT = 0;
 float s_scrollPos = 0;  // voxels, 'planes' mode
 float s_charPos = 0;    // chars, 'ring'/'stack' modes
+AudioThrob s_throb;
 
 void init(PatternCtx& ctx) {
   s_lastT = ctx.t;
   s_scrollPos = 0;
   s_charPos = 0;
+  s_throb.reset();
   std::memset(ctx.buffer, 0, NUM_LEDS * 3);
 }
 
@@ -101,6 +104,8 @@ void render(PatternCtx& ctx) {
   const float level = clamp01(audio.level);
   const float beat = audio.beat;
   const float audioMult = 1.0f + level * levelGain + beat * beatGain;
+  // Beat-synced brightness throb (shared module; same knobs as snake-3d).
+  const float throb = s_throb.update(ctx);
 
   int charCount = (int)std::strlen(text);
   const char* chars = charCount > 0 ? text : " ";
@@ -135,9 +140,14 @@ void render(PatternCtx& ctx) {
     for (int i = iMin; i <= iMax; i++) {
       const float pos = i * charSpacing - s_scrollPos;
       if (pos < -1 || pos > N) continue;
-      const char ch = chars[((i % charCount) + charCount) % charCount];
+      int ci = ((i % charCount) + charCount) % charCount;
+      // Reverse flips only the direction of travel; mirror the char-to-slot
+      // mapping too so the first letter still leads the motion — without this
+      // the message passes the viewer in back-to-front letter order.
+      if (reverse) ci = (charCount - ci) % charCount;
+      const char ch = chars[ci];
       const uint16_t* grid = getGlyph10(ch);
-      const float charBright = highlightLead && i != leadI ? trailDim : 1.0f;
+      const float charBright = (highlightLead && i != leadI ? trailDim : 1.0f) * throb;
 
       // Antialias across two adjacent slices using the fractional part.
       const int h0 = (int)std::floor(pos);
@@ -167,6 +177,7 @@ void render(PatternCtx& ctx) {
     const float fadeIn = fr < 0.85f ? 0.0f : (fr - 0.85f) / 0.15f;
 
     auto drawStack = [&](char ch, float weight) {
+      weight *= throb;
       if (weight <= 0) return;
       const uint16_t* grid = getGlyph10(ch);
       for (int h = 0; h < N; h++) {
@@ -222,6 +233,7 @@ void render(PatternCtx& ctx) {
     const float fadeIn = fr < 0.85f ? 0.0f : (fr - 0.85f) / 0.15f;
 
     auto drawChar = [&](char ch, float weight) {
+      weight *= throb;
       if (weight <= 0) return;
       const uint16_t* grid = getGlyph10(ch);
       for (int face = 0; face < 4; face++) {

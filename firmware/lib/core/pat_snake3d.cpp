@@ -10,6 +10,7 @@
 #include "cube_pattern.h"
 #include "cube_random.h"
 #include "cube_snake.h"
+#include "cube_throb.h"
 
 namespace cube {
 namespace {
@@ -48,6 +49,7 @@ struct SnakeGame {
 
 SnakeGame s_game;
 bool s_gameInit = false;
+AudioThrob s_throb;
 
 constexpr int kInputQueueMax = 8;
 SnakeDir s_inputQueue[kInputQueueMax];
@@ -312,6 +314,7 @@ void drawDirectionHint(PatternCtx& ctx, SnakeDir dir, const Segment& head, float
 void init(PatternCtx& ctx) {
   reset(s_gameInit ? s_game.highScore : 0);
   s_game.lastTickT = ctx.t;
+  s_throb.reset();
   std::memset(ctx.buffer, 0, NUM_LEDS * 3);
 }
 
@@ -332,9 +335,6 @@ void render(PatternCtx& ctx) {
   const int maxLen = (int)std::fmax(0.0f, std::floor(p.num("maxLen", 0.0f)));
   // Auto-only: music speeds the solver up (manual stays fair to fingers).
   const float autoLevelGain = p.num("autoLevelGain", 0.0f);
-  // Audio throb: body sits throbDepth below full brightness; beats flash it
-  // back to full. 0 = steady (current look).
-  const float throbDepth = clamp01(p.num("throbDepth", 0.0f));
   const PaletteRef pal = resolvePalette(p.str("palette", "spectrum"));
   const float appleR = p.num("appleR", 255.0f);
   const float appleG = p.num("appleG", 40.0f);
@@ -439,7 +439,9 @@ void render(PatternCtx& ctx) {
       buffer[ctx.idx(g.segments[i].x, g.segments[i].y, g.segments[i].z) * 3] = r;
     }
   } else {
-    const float throb = 1.0f - throbDepth * (1.0f - ctx.audio->beat);
+    // Audio throb: body sits throbDepth below full brightness; beats flash it
+    // back to full, smoothed by throbAttack/throbRelease (cube_throb.h).
+    const float throb = s_throb.update(ctx);
     for (int s = 0; s < g.length; s++) {
       const Segment& seg = g.segments[s];
       const float t01 = 1.0f - (float)s / std::fmax(1, g.length);

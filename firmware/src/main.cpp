@@ -30,14 +30,17 @@
 #include <Arduino.h>
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
+#include <LittleFS.h>
 #include <NeoPixelBus.h>
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <esp_random.h>
+#include <mbedtls/base64.h>
 
 #include "audio_capture.h"
+#include "cube_image.h"
 #include "cube_calibration.h"
 #include "cube_mod.h"
 #include "cube_pacman.h"
@@ -47,9 +50,10 @@
 #include "cube_presets.h"
 #include "cube_snake.h"
 #include "cube_power.h"
+#include "ha_mqtt.h"
 #include "web_ui.h"
 
-#define CUBE_VERSION "0.3.0"
+#define CUBE_VERSION "0.4.0"
 
 #ifndef CUBE_LED_PIN
 #define CUBE_LED_PIN 16
@@ -116,6 +120,12 @@ struct Settings {
   bool micLeft;       // PDM channel format
   float micSquelch;   // raw RMS below this = silence
   bool micEnabled;    // master toggle: false = patterns see silence
+  bool powerOn;       // HA light switch: false = dark (relay dropped if fitted)
+  bool mqttEnabled;   // Home Assistant MQTT integration
+  String mqttHost;
+  uint16_t mqttPort;
+  String mqttUser;
+  String mqttPass;
 };
 
 Preferences prefs;
@@ -144,6 +154,12 @@ void loadSettings() {
   settings.micLeft = prefs.getBool("micleft", false);
   settings.micSquelch = prefs.getFloat("micsq", 60.0f);
   settings.micEnabled = prefs.getBool("micen", true);
+  settings.powerOn = prefs.getBool("power", true);
+  settings.mqttEnabled = prefs.getBool("mqen", false);
+  settings.mqttHost = prefs.getString("mqhost", "");
+  settings.mqttPort = (uint16_t)prefs.getUInt("mqport", 1883);
+  settings.mqttUser = prefs.getString("mquser", "");
+  settings.mqttPass = prefs.getString("mqpass", "");
   prefs.end();
 }
 
@@ -259,6 +275,14 @@ int activePatternIdx = 0;
 PatternCtx ctx{frame, &geo, 0, 0, &audio, &params};
 uint32_t patternStartMs = 0;
 float lastT = 0;
+
+// ---- Home Assistant bridge state ----
+HaMqtt haMqtt;
+// Last text pushed via MQTT/`/api/text` (song titles). Re-applied whenever
+// text-3d becomes active, since a pattern switch reloads NVS params over it.
+// A preset that includes its own text still wins (params apply after init).
+String g_haText;
+String g_currentPreset;  // last loaded preset name; "" after a manual change
 
 // Effective (override-or-default) value of one spec, as a String.
 String effectiveParam(const ParamSpec& sp) {
@@ -410,6 +434,10 @@ void setPatternByIndex(int i, bool persist = true) {
   loadPatternMods(activePatternIdx);
   if (activePattern->init) activePattern->init(ctx);
   settings.patternId = activePattern->id;
+  if (!strcmp(activePattern->id, "text-3d") && g_haText.length())
+    params.setStr("text", g_haText.c_str());
+  g_currentPreset = "";
+  haMqtt.markDirty();
   if (persist) saveSetting("pattern", settings.patternId);
   Serial.printf("[pattern] %s\n", activePattern->id);
 }
@@ -579,7 +607,45 @@ bool loadPresetByName(const String& name, bool persistPattern = true) {
     }
   }
   if (activePattern && activePattern->init) activePattern->init(ctx);
+  g_currentPreset = name;
+  haMqtt.markDirty();
   return true;
+}
+
+// ---- power switch (Home Assistant light on/off) -------------------------------
+//
+// "Off" blanks the frame and stops rendering; on boards with the energy-saving
+// relay it also cuts LED V+ entirely. Network, mic, and the console stay up.
+void setCubePower(bool on) {
+  if (settings.powerOn == on) return;
+  settings.powerOn = on;
+  prefs.begin("cube", false);
+  prefs.putBool("power", on);
+  prefs.end();
+  if (!on) {
+    memset(frame, 0, sizeof(frame));
+    show(frame);
+#if CUBE_RELAY_PIN >= 0
+    digitalWrite(CUBE_RELAY_PIN, LOW);
+#endif
+  } else {
+#if CUBE_RELAY_PIN >= 0
+    digitalWrite(CUBE_RELAY_PIN, HIGH);
+#endif
+  }
+  haMqtt.markDirty();
+  Serial.printf("[power] %s\n", on ? "on" : "off");
+}
+
+// Song-title text from HA/REST: sanitize, remember, apply live if text-3d is
+// up. Shared by the MQTT text entity and POST /api/text.
+void setCubeText(const String& v) {
+  String t = v.length() > 200 ? v.substring(0, 200) : v;
+  for (size_t i = 0; i < t.length();)  // control chars have no glyphs
+    if ((uint8_t)t[i] < 0x20) t.remove(i, 1); else i++;
+  g_haText = t;
+  if (settings.patternId == "text-3d") params.setStr("text", t.c_str());
+  haMqtt.markDirty();
 }
 
 // ---- playlist cycling (cube-eq5.2 / cube-eq5.3) -------------------------------
@@ -692,6 +758,46 @@ void playlistTick() {
   playlistAdvance(+1);
 }
 
+// ---- Home Assistant MQTT bridge ----------------------------------------------
+
+void startHaMqtt() {
+  if (!settings.mqttEnabled || settings.mqttHost.length() == 0) return;
+  HaMqttHooks hooks;
+  hooks.getPower = []() { return settings.powerOn; };
+  hooks.setPower = [](bool on) { setCubePower(on); };
+  hooks.getBrightness = []() { return settings.brightness; };
+  hooks.setBrightness = [](float v) {
+    settings.brightness = constrain(v, 0.0f, 1.0f);
+    saveSetting("bright", settings.brightness);
+  };
+  hooks.getPattern = []() { return settings.patternId; };
+  hooks.setPattern = [](const String& id) {
+    pausePlaylistForManual();
+    setPatternById(id);  // unknown ids are ignored
+  };
+  hooks.getPreset = []() { return g_currentPreset; };
+  hooks.loadPreset = [](const String& name) {
+    if (loadPresetByName(name)) pausePlaylistForManual();
+  };
+  hooks.getText = []() {
+    return settings.patternId == "text-3d" ? String(params.str("text", "HELLO 123 "))
+                                           : g_haText;
+  };
+  hooks.setText = [](const String& v) { setCubeText(v); };
+  hooks.patternOptions = [](JsonArray arr) {
+    for (int i = 0; i < kPatternCount; i++) arr.add(kPatterns[i]->id);
+  };
+  hooks.presetOptions = [](JsonArray arr) {
+    PresetMeta metas[kMaxPresets];
+    const int n = presetList(metas, kMaxPresets);
+    for (int i = 0; i < n; i++) arr.add(metas[i].name);
+  };
+  hooks.version = CUBE_VERSION;
+  haMqtt.begin(settings.mqttHost, settings.mqttPort, settings.mqttUser,
+               settings.mqttPass, hooks);
+  Serial.printf("[mqtt] broker %s:%u\n", settings.mqttHost.c_str(), settings.mqttPort);
+}
+
 // ---- DNRGB live override ------------------------------------------------------
 
 WiFiUDP udp;
@@ -728,7 +834,11 @@ void handleButton() {
   if (state != lastState && now - lastEdgeMs > 50) {
     lastEdgeMs = now;
     lastState = state;
-    if (!state) setPatternByIndex(activePatternIdx + 1);  // press = next pattern
+    if (!state) {
+      // Press = next pattern; if the cube is "off", the button wakes it first.
+      if (!settings.powerOn) setCubePower(true);
+      else setPatternByIndex(activePatternIdx + 1);
+    }
   }
 #endif
 }
@@ -948,6 +1058,8 @@ void handleStatus() {
   json += ",\"fps\":" + String(CUBE_FPS);
   json += ",\"uptimeS\":" + String(millis() / 1000);
   json += ",\"micOn\":" + String(settings.micEnabled ? "true" : "false");
+  json += ",\"power\":" + String(settings.powerOn ? "true" : "false");
+  json += ",\"mqtt\":\"" + String(settings.mqttEnabled ? haMqtt.status() : "off") + "\"";
   json += ",\"otaArmed\":" + String(otaArmed ? "true" : "false");
   json += ",\"otaRemainingSec\":" +
           String(otaArmed ? max(0, (int)((int32_t)(otaDisarmAtMs - millis()) / 1000)) : 0);
@@ -992,6 +1104,7 @@ void startNetServices() {
   setupWebServer();
   audioCaptureStart();
   audioCaptureReconfigure(settings.micLeft, settings.micSquelch);
+  startHaMqtt();
   Serial.println("[net] services up (mdns/udp/http/mic; ota disarmed)");
 }
 
@@ -1010,6 +1123,72 @@ void setupWebServer() {
   server.on("/api/brightness", HTTP_POST, []() {
     settings.brightness = constrain(server.arg("v").toFloat(), 0.0f, 1.0f);
     saveSetting("bright", settings.brightness);
+    haMqtt.markDirty();
+    server.send(200, "text/plain", "ok");
+  });
+  // Guest-tier power switch (mirrors the HA light entity).
+  server.on("/api/power", HTTP_POST, []() {
+    setCubePower(server.arg("on") != "0");
+    server.send(200, "text/plain", "ok");
+  });
+  // Set the text-3d message (REST twin of the MQTT text entity — handy for
+  // song-title automations without a broker). Optional show=1 switches the
+  // cube to text-3d if it isn't there already.
+  server.on("/api/text", HTTP_POST, []() {
+    setCubeText(server.arg("v"));
+    if (server.arg("show") == "1" && settings.patternId != "text-3d") {
+      pausePlaylistForManual();
+      setPatternById("text-3d", /*persist=*/false);
+    }
+    server.send(200, "text/plain", "ok");
+  });
+  // Album-art upload for the image-3d pattern. Body = base64 of raw RGB24
+  // (w*h*3 bytes, row-major from the top row); w/h query params up to 64.
+  // The image is box-downscaled to 10x10 on arrival. persist=0 skips the
+  // flash write (recommended for once-per-song automations); show=1 switches
+  // the cube to image-3d.
+  server.on("/api/image", HTTP_POST, []() {
+    const int w = server.hasArg("w") ? server.arg("w").toInt() : IMG_N;
+    const int h = server.hasArg("h") ? server.arg("h").toInt() : IMG_N;
+    if (w < 1 || h < 1 || w > IMG_MAX_SRC || h > IMG_MAX_SRC) {
+      server.send(400, "text/plain", "w/h must be 1..64");
+      return;
+    }
+    String b64 = server.arg("plain");
+    // Tolerate the newlines/whitespace that `base64` pipelines emit.
+    String clean;
+    clean.reserve(b64.length());
+    for (size_t i = 0; i < b64.length(); i++)
+      if ((uint8_t)b64[i] > ' ') clean += b64[i];
+    // Heap, not static: 12KB of BSS doesn't fit in DRAM alongside the WiFi
+    // stack; a short-lived alloc during one request is fine.
+    const size_t rawCap = IMG_MAX_SRC * IMG_MAX_SRC * 3;
+    uint8_t* raw = (uint8_t*)malloc(rawCap);
+    if (!raw) {
+      server.send(500, "text/plain", "out of memory");
+      return;
+    }
+    size_t olen = 0;
+    if (mbedtls_base64_decode(raw, rawCap, &olen, (const uint8_t*)clean.c_str(),
+                              clean.length()) != 0 ||
+        (int)olen < w * h * 3) {
+      free(raw);
+      server.send(400, "text/plain", "body must be base64 of w*h*3 RGB bytes");
+      return;
+    }
+    cubeImageSet(raw, w, h);
+    free(raw);
+    if (server.arg("persist") != "0") {
+      File f = LittleFS.open("/image.rgb", "w");
+      if (f) {
+        f.write(cubeImagePixels(), IMG_N * IMG_N * 3);
+        f.close();
+      }
+    }
+    if (server.arg("show") == "1" && settings.patternId != "image-3d") {
+      pausePlaylistForManual();
+      setPatternById("image-3d", /*persist=*/false);
+    }
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/supply", HTTP_POST, []() {
@@ -1227,6 +1406,7 @@ void setupWebServer() {
                             ? max(1.0f, server.arg("dwellSec").toFloat())
                             : 20.0f;
     savePresetSnapshot(name, priority, dwell);
+    haMqtt.refreshDiscovery();  // preset select options changed
     server.send(200, "text/plain", "ok");
   });
   // Apply a preset (changes the live pattern) — allowed for guests.
@@ -1249,6 +1429,7 @@ void setupWebServer() {
     }
     presetDelete(name);
     if (playlist.current == name) playlist.current = "";  // cursor restarts cleanly
+    haMqtt.refreshDiscovery();
     server.send(200, "text/plain", "ok");
   });
   // Edit just a preset's playlist metadata (dwellSec/priority) without
@@ -1370,6 +1551,7 @@ void setupWebServer() {
       server.send(400, "text/plain", "invalid json");
       return;
     }
+    haMqtt.refreshDiscovery();
     server.send(200, "application/json",
                 "{\"imported\":" + String(imported) + ",\"overwritten\":" +
                     String(overwritten) + ",\"skipped\":" + String(skipped) + "}");
@@ -1407,6 +1589,7 @@ void setupWebServer() {
     }
     if (slugChanged) presetDelete(from);
     if (playlist.current == from) playlist.current = to;
+    haMqtt.refreshDiscovery();
     server.send(200, "text/plain", "ok");
   });
   // ---- playlist cycling ----
@@ -1718,6 +1901,10 @@ void setupWebServer() {
     String page = kWifiHtml;
     page.replace("%SSID%", settings.wifiSsid);
     page.replace("%UIPASS%", settings.uiPass.length() ? "(unchanged)" : "(not set)");
+    page.replace("%MQEN%", settings.mqttEnabled ? "checked" : "");
+    page.replace("%MQHOST%", settings.mqttHost);
+    page.replace("%MQPORT%", String(settings.mqttPort));
+    page.replace("%MQUSER%", settings.mqttUser);
     page.replace("%APWARN%",
                  settings.apPass == CUBE_AP_PASS
                      ? "<p style=\"background:#3a1d1d;border:1px solid #8a4438;"
@@ -1737,6 +1924,14 @@ void setupWebServer() {
     if (server.arg("appass").length() >= 8) saveSetting("appass", server.arg("appass"));
     if (server.hasArg("clearui")) saveSetting("uipass", String(""));
     else if (server.arg("uipass").length() >= 4) saveSetting("uipass", server.arg("uipass"));
+    prefs.begin("cube", false);
+    prefs.putBool("mqen", server.hasArg("mqen"));
+    if (server.hasArg("mqhost")) prefs.putString("mqhost", server.arg("mqhost"));
+    if (server.arg("mqport").toInt() > 0)
+      prefs.putUInt("mqport", (uint32_t)server.arg("mqport").toInt());
+    if (server.hasArg("mquser")) prefs.putString("mquser", server.arg("mquser"));
+    if (server.arg("mqpass").length() > 0) prefs.putString("mqpass", server.arg("mqpass"));
+    prefs.end();
     server.send(200, "text/html",
                 "<body style=\"font-family:system-ui;background:#0d0d10;color:#ddd\">"
                 "Saved. Rebooting&hellip; The cube joins your network, or its "
@@ -1761,9 +1956,20 @@ void setup() {
 #endif
 #if CUBE_RELAY_PIN >= 0
   pinMode(CUBE_RELAY_PIN, OUTPUT);
-  digitalWrite(CUBE_RELAY_PIN, HIGH);  // power the LED string
+  // Power the LED string — unless the cube was switched "off" (HA light)
+  // before the reboot, in which case stay dark until switched on.
+  digitalWrite(CUBE_RELAY_PIN, settings.powerOn ? HIGH : LOW);
 #endif
   initStrips();
+  // Restore the persisted album art (uploaded via /api/image).
+  {
+    File f = LittleFS.open("/image.rgb", "r");
+    if (f) {
+      uint8_t buf[IMG_N * IMG_N * 3];
+      if (f.read(buf, sizeof(buf)) == sizeof(buf)) cubeImageSet(buf, IMG_N, IMG_N);
+      f.close();
+    }
+  }
 
   // Non-blocking: netTick() in loop() drives join/fallback, so patterns
   // start immediately and the AP always comes back if the network is lost.
@@ -1789,6 +1995,7 @@ void loop() {
     if ((int32_t)(millis() - otaDisarmAtMs) > 0) disarmOta();  // window lapsed
   }
   server.handleClient();
+  if (WiFi.status() == WL_CONNECTED) haMqtt.loop();
   handleRealtime();
   handleButton();
   playlistTick();
@@ -1810,6 +2017,10 @@ void loop() {
   const uint32_t now = millis();
   if (now < nextFrameMs) return;
   nextFrameMs = now + 1000 / CUBE_FPS;
+
+  // "Off" (HA light switch): the frame was blanked (and the relay dropped)
+  // by setCubePower; skip rendering — including live DNRGB — until on again.
+  if (!settings.powerOn) return;
 
   if (now < liveUntilMs) {
     show(liveFrame);  // dev server (or any WLED sender) has the cube

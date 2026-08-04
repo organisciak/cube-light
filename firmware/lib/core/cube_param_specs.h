@@ -24,6 +24,18 @@ struct ParamSpec {
   const char* desc;      // one-line hover help shown in the console UI
 };
 
+// Shared audio-throb block (cube_throb.h): same three knobs, same keys, on
+// every pattern that dips its brightness between beats. Splice into a spec
+// array with the pattern's default depth (0 = steady until dialed up).
+#define CUBE_THROB_SPECS(defDepth)                                            \
+  {"throbDepth", "Audio throb depth", 0, 0.0f, 0.8f, 0.05f, defDepth, "", "", \
+   "Brightness dips this far between beats; each beat flashes back to full. " \
+   "0 = steady."},                                                            \
+  {"throbAttack", "Throb attack (s)", 0, 0.0f, 0.5f, 0.01f, 0.03f, "", "",    \
+   "Seconds for a beat to flash up to full brightness. 0 = instant snap."},   \
+  {"throbRelease", "Throb release (s)", 0, 0.05f, 2.0f, 0.05f, 0.5f, "", "",  \
+   "Seconds to sink back down after a beat. Longer = smoother, less twitchy."},
+
 static const ParamSpec kSpecs_wavy_sheet[] = {
     {"axis", "Wave-height axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "z", "x,y,z",
      "Which cube axis the sheet's height runs along."},
@@ -203,6 +215,7 @@ static const ParamSpec kSpecs_spiral[] = {
      "Color along the spiral's path, or one color per layer."},
     {"levelGain", "Level → speed", 0, 0.0f, 4.0f, 0.1f, 1.0f, "", "",
      "Loudness speeds the drawing."},
+    CUBE_THROB_SPECS(0.0f)
     {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.05f, 0.9f, "", "",
      "Color saturation when no palette is active."},
 };
@@ -361,6 +374,7 @@ static const ParamSpec kSpecs_text_3d[] = {
      "Loudness speeds the text."},
     {"beatGain", "Beat → speed kick", 0, 0.0f, 6.0f, 0.1f, 1.5f, "", "",
      "Beats kick the text speed."},
+    CUBE_THROB_SPECS(0.0f)
     {"highlightLead", "Planes: highlight lead", 1, 0.0f, 0.0f, 0.0f, 0.0f, "", "",
      "Planes mode: the leading character stays bright, the rest dim."},
     {"trailDim", "Planes: trail brightness", 0, 0.0f, 1.0f, 0.05f, 0.8f, "", "",
@@ -380,6 +394,20 @@ static const ParamSpec kSpecs_text_3d[] = {
     {"b", "B (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 200.0f, "", "",
      "Text blue channel when palette is \"none\"."},
 };
+static const ParamSpec kSpecs_image_3d[] = {
+    {"axis", "Vertical axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "z", "x,y,z",
+     "Axis that counts as \"up\" for the art and the background fade."},
+    {"level", "Art brightness", 0, 0.0f, 1.0f, 0.05f, 1.0f, "", "",
+     "Brightness of the image on the faces."},
+    {"bgLevel", "Background glow", 0, 0.0f, 0.6f, 0.02f, 0.12f, "", "",
+     "Interior glow in the image's average color. 0 = faces only."},
+    {"bgFade", "Background fade", 0, 0.0f, 1.0f, 0.05f, 0.7f, "", "",
+     "How much the glow fades toward the top. 0 = even fill."},
+    CUBE_THROB_SPECS(0.3f)
+    {"imgThrob", "Throb on art", 0, 0.0f, 1.0f, 0.05f, 0.25f, "", "",
+     "Fraction of the throb that reaches the art itself; the glow always "
+     "takes the full throb."},
+};
 static const ParamSpec kSpecs_tv_static[] = {
     {"spawnRate", "Ambient glitches/s", 0, 0.0f, 30.0f, 0.5f, 3.0f, "", "",
      "Random glitch pixels per second, music or not."},
@@ -392,7 +420,10 @@ static const ParamSpec kSpecs_tv_static[] = {
     {"beatArm", "Beat → arm stretch", 0, 0.0f, 4.0f, 0.25f, 2.0f, "", "",
      "Beats stretch the arms this much further out."},
     {"aberration", "Aberration brightness", 0, 0.0f, 1.0f, 0.05f, 0.8f, "", "",
-     "Brightness of the colored arms relative to the white center."},
+     "Brightness of the colored arms relative to the center flash."},
+    {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
+     "Glitch colors (each picks a random position); \"none\" = classic white "
+     "flash with pure R/G/B arms."},
     {"gray", "Background gray", 0, 0.0f, 80.0f, 1.0f, 0.0f, "", "",
      "0 = pure black; higher = faint gray dead-channel static behind the glitches."},
     {"grayFlicker", "Background flicker", 0, 0.0f, 1.0f, 0.05f, 0.5f, "", "",
@@ -435,8 +466,7 @@ static const ParamSpec kSpecs_snake_3d[] = {
      "Cap the snake's length — it keeps scoring but stops growing. Keeps long auto games readable."},
     {"autoLevelGain", "Auto: level → speed", 0, 0.0f, 3.0f, 0.1f, 0.0f, "", "",
      "Auto mode only: loudness speeds the snake up. Manual stays fair."},
-    {"throbDepth", "Audio throb depth", 0, 0.0f, 0.8f, 0.05f, 0.0f, "", "",
-     "Body dims by this much and beats flash it back to full. 0 = steady."},
+    CUBE_THROB_SPECS(0.0f)
     {"palette", "Tail palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "spectrum", "",
      "Body colors head-to-tail."},
     {"appleR", "Apple R", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", "",
@@ -579,6 +609,7 @@ static const PatternSpecs kPatternSpecs[] = {
     {"cloud", kSpecs_cloud, SPEC_N(kSpecs_cloud)},
     {"comet", kSpecs_comet, SPEC_N(kSpecs_comet)},
     {"text-3d", kSpecs_text_3d, SPEC_N(kSpecs_text_3d)},
+    {"image-3d", kSpecs_image_3d, SPEC_N(kSpecs_image_3d)},
     {"tv-static", kSpecs_tv_static, SPEC_N(kSpecs_tv_static)},
     {"wander", kSpecs_wander, SPEC_N(kSpecs_wander)},
     {"snake-3d", kSpecs_snake_3d, SPEC_N(kSpecs_snake_3d)},

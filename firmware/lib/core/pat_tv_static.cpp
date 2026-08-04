@@ -5,10 +5,16 @@
 // blue arms shooting out in different directions — and the beat stretches the
 // arms longer. Optional faint gray per-pixel noise turns the background into
 // true "dead channel" static.
+//
+// With a palette active, each glitch samples a random palette position at
+// spawn: the center flashes that color and the three arms carry its R/G/B
+// channel split — so a cyan glitch throws bright green and blue arms and a
+// faint red one. "none" keeps the classic white/pure-RGB look.
 #include <cmath>
 #include <cstring>
 
 #include "cube_color.h"
+#include "cube_palettes.h"
 #include "cube_pattern.h"
 #include "cube_random.h"
 
@@ -24,6 +30,7 @@ struct Glitch {
   uint8_t dirR, dirG, dirB;  // distinct axis directions for the three arms
   float born;
   float life;
+  float pos;  // palette position, fixed at spawn (unused when palette=none)
 };
 
 constexpr int kMaxGlitches = 24;
@@ -44,6 +51,7 @@ void spawnGlitch(float t, float life) {
   do g.dirB = (uint8_t)(frand() * 6); while (g.dirB == g.dirR || g.dirB == g.dirG);
   g.born = t;
   g.life = life * (0.6f + frand() * 0.8f);
+  g.pos = frand();
 }
 
 void init(PatternCtx& ctx) {
@@ -80,6 +88,9 @@ void render(PatternCtx& ctx) {
   const float aberration = clamp01(p.num("aberration", 0.8f));
   const float grayLevel = p.num("gray", 0.0f);
   const float grayFlicker = clamp01(p.num("grayFlicker", 0.5f));
+  const char* paletteName = p.str("palette", "none");
+  const bool useP = paletteActive(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName);
 
   const float beat = audio.beat;
 
@@ -115,7 +126,13 @@ void render(PatternCtx& ctx) {
     // Snap on fast, fade out — a flashbulb, not a swell.
     const float env = u < 0.15f ? u / 0.15f : 1.0f - (u - 0.15f) / 0.85f;
 
-    maxAt(buffer, ctx.idx(g.x, g.y, g.z) * 3, 255 * env, 255 * env, 255 * env);
+    // Glitch color: white (classic) or the palette sample fixed at spawn.
+    // Arms carry the color's channel split, so aberration survives tinting.
+    uint8_t rgb[3] = {255, 255, 255};
+    if (useP) samplePalette(pal, g.pos, t, rgb);
+
+    maxAt(buffer, ctx.idx(g.x, g.y, g.z) * 3, rgb[0] * env, rgb[1] * env,
+          rgb[2] * env);
 
     const int dirs[3] = {g.dirR, g.dirG, g.dirB};
     for (int ch = 0; ch < 3; ch++) {
@@ -126,10 +143,11 @@ void render(PatternCtx& ctx) {
         if (cx < 0 || cx >= N || cy < 0 || cy >= N || cz < 0 || cz >= N) break;
         // Fractional coverage at the arm tip so beat growth looks smooth.
         const float cover = std::fmin(1.0f, arm - (k - 1));
-        const float v = 255.0f * env * aberration * cover * (1.0f - 0.15f * k);
-        if (v <= 1.0f) break;
+        const float v = env * aberration * cover * (1.0f - 0.15f * k);
+        if (v * 255.0f <= 1.0f) break;
         const int i = ctx.idx(cx, cy, cz) * 3;
-        maxAt(buffer, i, ch == 0 ? v : 0, ch == 1 ? v : 0, ch == 2 ? v : 0);
+        maxAt(buffer, i, ch == 0 ? v * rgb[0] : 0, ch == 1 ? v * rgb[1] : 0,
+              ch == 2 ? v * rgb[2] : 0);
       }
     }
     s_glitches[alive++] = g;

@@ -6,6 +6,7 @@
 #include "cube_color.h"
 #include "cube_palettes.h"
 #include "cube_pattern.h"
+#include "cube_throb.h"
 
 namespace cube {
 namespace {
@@ -39,6 +40,7 @@ void buildSpiralPath() {
 float s_lastT = 0;
 float s_phase = 0;
 float s_offSpeed = -1;  // low-passed speed for the per-layer offset (<0 = unset)
+AudioThrob s_throb;
 
 // "cycle" axis mode: each layer's effective axis follows its OWN pass number
 // (z -> y -> x -> z ...), computed per-layer in render(). Because a layer is
@@ -52,6 +54,7 @@ void init(PatternCtx& ctx) {
   s_lastT = ctx.t;
   s_phase = 0;
   s_offSpeed = -1;
+  s_throb.reset();
   std::memset(ctx.buffer, 0, NUM_LEDS * 3);
 }
 
@@ -74,6 +77,9 @@ void render(PatternCtx& ctx) {
   const char* paletteName = p.str("palette", "cyberpunk");
   const bool useP = paletteActive(paletteName);
   const PaletteRef pal = resolvePalette(paletteName);
+
+  // Beat-synced brightness throb (shared module; same knobs as snake/text).
+  const float throb = s_throb.update(ctx);
 
   const int len = s_pathLen;
   const float cycle = 2.0f * len;
@@ -119,7 +125,7 @@ void render(PatternCtx& ctx) {
         cy = ny;
       }
       const float age = (float)(to - 1 - i) / std::fmax(1, to - from);
-      const float k = 1.0f - age * (1.0f - tailDim);
+      const float k = (1.0f - age * (1.0f - tailDim)) * throb;
       const float t01 = colorByLayer ? (float)h / (N - 1) : (float)i / (len - 1);
       uint8_t rgb[3];
       if (useP) samplePalette(pal, t01, t, rgb);

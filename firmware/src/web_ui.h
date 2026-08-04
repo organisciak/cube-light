@@ -454,6 +454,19 @@ on the same network from changing settings.</p>
 <div class="pw"><input type="password" name="uipass" id="uipass" placeholder="%UIPASS%"><button type="button" data-for="uipass">show</button></div>
 <label class="chk"><input type="checkbox" name="clearui" value="1">Remove console password</label>
 
+<h2>Home Assistant (MQTT)</h2>
+<p>Point the cube at your MQTT broker (the Mosquitto add-on, usually) and it
+announces itself to Home Assistant automatically: a light with on/off +
+brightness, pattern &amp; preset pickers, and a text box that drives the
+text pattern. See <b>docs/home-assistant.md</b> in the repo for automations
+(song titles, album art).</p>
+<label class="chk"><input type="checkbox" name="mqen" value="1" %MQEN%>Enable MQTT</label>
+<label>Broker host / IP</label><input type="text" name="mqhost" value="%MQHOST%" placeholder="homeassistant.local">
+<label>Broker port</label><input type="text" name="mqport" value="%MQPORT%">
+<label>MQTT username (optional)</label><input type="text" name="mquser" value="%MQUSER%">
+<label>MQTT password</label>
+<div class="pw"><input type="password" name="mqpass" id="mqpass" placeholder="(unchanged)"><button type="button" data-for="mqpass">show</button></div>
+
 <button class="act">Save &amp; reboot</button>
 </form>
 <p><a href="/">&larr; back</a></p>

@@ -14,6 +14,7 @@ extern const Pattern kCloud;
 extern const Pattern kAudioRipple;
 extern const Pattern kSpectrumDiscs;
 extern const Pattern kText3d;
+extern const Pattern kImage3d;
 extern const Pattern kTvStatic;
 extern const Pattern kWander;
 extern const Pattern kIndexWalk;
@@ -47,6 +48,7 @@ const Pattern* const kPatterns[] = {
     &kTvStatic,
     &kWander,
     &kText3d,
+    &kImage3d,
     &kFireworks,
     &kSnake3d,
     &kSnakeCal,

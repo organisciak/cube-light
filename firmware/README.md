@@ -16,6 +16,9 @@ ESP32 itself (GL-C-618WL target). See `docs/on-chip-plan.md` for the full plan.
   frames as WLED DNRGB packets, so the exact firmware pattern code can be
   previewed with zero hardware.
 - `platformio.ini` — ESP32 build config (`pio run -e gledopto618 -t upload`).
+- `src/ha_mqtt.h` — Home Assistant bridge (MQTT discovery: light + pattern /
+  preset selects + text entity). Configure from `/wifi`; see
+  `docs/home-assistant.md` for automations (song titles, album art).
 
 ## Emulating without hardware
 
