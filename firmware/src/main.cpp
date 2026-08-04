@@ -53,7 +53,7 @@
 #include "ha_mqtt.h"
 #include "web_ui.h"
 
-#define CUBE_VERSION "0.4.0"
+#define CUBE_VERSION "0.4.2"
 
 #ifndef CUBE_LED_PIN
 #define CUBE_LED_PIN 16
@@ -513,7 +513,11 @@ void saveSnakeDirMap() {
 // type 1 = bool, 2/3/4 = enum/palette/string, everything else (0 num, 5 color)
 // = number.
 
-void savePresetSnapshot(const String& name, int priority, float dwellSec) {
+// includeText=false (text-3d "params only" save): the "text" param is left
+// out of the snapshot, so loading the preset styles the text without
+// replacing the words currently showing (song titles from HA, etc.).
+void savePresetSnapshot(const String& name, int priority, float dwellSec,
+                        bool includeText = true) {
   JsonDocument doc;
   doc["name"] = name;
   doc["pattern"] = settings.patternId;
@@ -524,6 +528,7 @@ void savePresetSnapshot(const String& name, int priority, float dwellSec) {
   if (ps) {
     for (int i = 0; i < ps->count; i++) {
       const ParamSpec& sp = ps->specs[i];
+      if (!includeText && strcmp(sp.key, "text") == 0) continue;
       switch (sp.type) {
         case 1: p[sp.key] = params.boolean(sp.key, sp.defNum != 0); break;
         case 2:
@@ -559,6 +564,10 @@ bool loadPresetByName(const String& name, bool persistPattern = true) {
   // Unknown/typo'd pattern id: fail loudly instead of silently perturbing
   // whatever pattern happens to be active.
   if (!pat[0] || !specsFor(pat)) return false;
+  // The words currently showing, captured before the switch clears params —
+  // restored below when the preset was saved without its text.
+  String liveText;
+  if (settings.patternId == "text-3d") liveText = params.str("text", "");
   setPatternById(String(pat), persistPattern);  // clears params, loads NVS defaults, inits
   JsonObject p = doc["params"].as<JsonObject>();
   const PatternSpecs* ps = specsFor(settings.patternId.c_str());
@@ -606,6 +615,11 @@ bool loadPresetByName(const String& name, bool persistPattern = true) {
                mp->stepV, mp->minV);
     }
   }
+  // Preset saved without its words ("params only"): keep the text that was
+  // already up — the live console text first, else the HA text applied by
+  // setPatternById, else the pattern's saved default.
+  if (settings.patternId == "text-3d" && p["text"].isNull() && liveText.length())
+    params.setStr("text", liveText.c_str());
   if (activePattern && activePattern->init) activePattern->init(ctx);
   g_currentPreset = name;
   haMqtt.markDirty();
@@ -664,15 +678,67 @@ struct PlaylistState {
   String current;         // name of the preset currently showing
   uint32_t startedMs = 0;  // millis() when it began
   float dwellSec = 20;     // dwell of the current preset
+  String list;            // active curated playlist; "" = all presets (default)
+  float dwellOverride = 0;  // >0 = demo mode: every preset shows this long
 };
 PlaylistState playlist;
+
+// Curated playlists (cube-eq5 follow-on): named subsets of the preset store,
+// persisted as one JSON file {"lists":[{"name":..,"presets":[names...]}]}.
+// The default cycle (all presets, priority rules) needs no entry here.
+constexpr int kMaxPlaylists = 8;
+const char* kPlaylistsPath = "/playlists.json";
+
+bool playlistsLoad(JsonDocument& doc) {
+  File f = LittleFS.open(kPlaylistsPath, "r");
+  if (!f) return false;
+  const bool ok = !deserializeJson(doc, f);
+  f.close();
+  return ok;
+}
+
+bool playlistsStore(const JsonDocument& doc) {
+  File f = LittleFS.open(kPlaylistsPath, "w");
+  if (!f) return false;
+  const bool ok = serializeJson(doc, f) > 0;
+  f.close();
+  return ok;
+}
+
+// Keep curated lists consistent when a preset is renamed (to != "") or
+// deleted (to == "") — otherwise lists silently thin out over time.
+void playlistsFixupPreset(const String& from, const String& to) {
+  JsonDocument doc;
+  if (!playlistsLoad(doc)) return;
+  bool changed = false;
+  for (JsonObject l : doc["lists"].as<JsonArray>()) {
+    JsonArray ps = l["presets"].as<JsonArray>();
+    for (size_t i = 0; i < ps.size();) {
+      if (from == (ps[i] | "")) {
+        changed = true;
+        if (to.length()) {
+          ps[i] = to;
+          i++;
+        } else {
+          ps.remove(i);
+        }
+      } else {
+        i++;
+      }
+    }
+  }
+  if (changed) playlistsStore(doc);
+}
 // Set while the playlist engine itself loads a preset, so the auto-pause hook
 // (which fires on manual pattern/param/preset changes) doesn't stop the cycle.
 bool playlistLoading = false;
 
 // Manual pattern/param/preset change stops the cycle so tinkering isn't stomped.
 void pausePlaylistForManual() {
-  if (!playlistLoading) playlist.enabled = false;
+  if (!playlistLoading && playlist.enabled) {
+    playlist.enabled = false;
+    haMqtt.markDirty();  // HA's playlist switch flips off immediately
+  }
 }
 
 void playlistLoadIndex(const PresetMeta* metas, int i) {
@@ -682,18 +748,62 @@ void playlistLoadIndex(const PresetMeta* metas, int i) {
   loadPresetByName(metas[i].name, false);
   playlistLoading = false;
   playlist.current = metas[i].name;
-  playlist.dwellSec = metas[i].dwellSec > 0 ? metas[i].dwellSec : 20.0f;
+  // Demo override beats per-preset dwell (e.g. 5s cycling for filming).
+  playlist.dwellSec = playlist.dwellOverride > 0
+                          ? playlist.dwellOverride
+                          : (metas[i].dwellSec > 0 ? metas[i].dwellSec : 20.0f);
   playlist.startedMs = millis();
+}
+
+// Fill `out` with the cycle's preset pool. Default ("" list): the whole
+// store. Named list: its members in curated order (missing presets skipped);
+// an unknown/empty list falls back to the whole store rather than stalling
+// the cycle. Sets `curated` accordingly.
+int playlistPool(PresetMeta* out, bool& curated) {
+  PresetMeta metas[kMaxPresets];
+  const int n = presetList(metas, kMaxPresets);
+  curated = false;
+  if (playlist.list.length() == 0) {
+    for (int i = 0; i < n; i++) out[i] = metas[i];
+    return n;
+  }
+  JsonDocument doc;
+  int k = 0;
+  if (playlistsLoad(doc)) {
+    for (JsonObject l : doc["lists"].as<JsonArray>()) {
+      if (playlist.list != (l["name"] | "")) continue;
+      for (const char* nm : l["presets"].as<JsonArray>()) {
+        if (!nm || k >= kMaxPresets) break;
+        for (int i = 0; i < n; i++) {
+          if (metas[i].name == nm) {
+            out[k++] = metas[i];
+            break;
+          }
+        }
+      }
+      break;
+    }
+  }
+  if (k == 0) {  // unknown or fully-orphaned list: behave like the default
+    for (int i = 0; i < n; i++) out[i] = metas[i];
+    return n;
+  }
+  curated = true;
+  return k;
 }
 
 // Shuffle pick: weighted by priority, priority-0 excluded, avoiding an
 // immediate repeat when another eligible preset exists. With micFilter set,
 // music-reactive presets are excluded too (mic off = they'd sit static).
-// Returns -1 if nothing is eligible.
+// In a curated list membership is explicit, so nothing is excluded there:
+// priority 0 plays with weight 1. Returns -1 if nothing is eligible.
 int playlistPickWeighted(const PresetMeta* metas, int n, const String& avoid,
-                         bool micFilter) {
+                         bool micFilter, bool curated) {
+  auto weight = [&](int i) {
+    return curated ? max(1, metas[i].priority) : metas[i].priority;
+  };
   auto eligible = [&](int i) {
-    return metas[i].priority > 0 && !(micFilter && metas[i].reactive);
+    return weight(i) > 0 && !(micFilter && metas[i].reactive);
   };
   int elExAvoid = 0;
   for (int i = 0; i < n; i++)
@@ -703,14 +813,14 @@ int playlistPickWeighted(const PresetMeta* metas, int n, const String& avoid,
   for (int i = 0; i < n; i++) {
     if (!eligible(i)) continue;
     if (skipAvoid && metas[i].name == avoid) continue;
-    total += metas[i].priority;
+    total += weight(i);
   }
   if (total <= 0) return -1;
   int r = (int)(esp_random() % (uint32_t)total);
   for (int i = 0; i < n; i++) {
     if (!eligible(i)) continue;
     if (skipAvoid && metas[i].name == avoid) continue;
-    r -= metas[i].priority;
+    r -= weight(i);
     if (r < 0) return i;
   }
   return -1;
@@ -720,8 +830,9 @@ int playlistPickWeighted(const PresetMeta* metas, int n, const String& avoid,
 // always re-picks at random regardless of dir sign). Disables the playlist if
 // the store is empty or nothing is eligible for shuffle.
 void playlistAdvance(int dir) {
-  PresetMeta metas[kMaxPresets];
-  const int n = presetList(metas, kMaxPresets);
+  static PresetMeta metas[kMaxPresets];
+  bool curated = false;
+  const int n = playlistPool(metas, curated);
   if (n == 0) {
     playlist.enabled = false;
     return;
@@ -731,9 +842,9 @@ void playlistAdvance(int dir) {
   const bool micFilter = !settings.micEnabled;
   int pick;
   if (playlist.shuffle) {
-    pick = playlistPickWeighted(metas, n, playlist.current, micFilter);
+    pick = playlistPickWeighted(metas, n, playlist.current, micFilter, curated);
     if (pick < 0 && micFilter)
-      pick = playlistPickWeighted(metas, n, playlist.current, false);
+      pick = playlistPickWeighted(metas, n, playlist.current, false, curated);
     if (pick < 0) {  // all priority 0 -> nothing to auto-play
       playlist.enabled = false;
       return;
@@ -791,6 +902,37 @@ void startHaMqtt() {
     PresetMeta metas[kMaxPresets];
     const int n = presetList(metas, kMaxPresets);
     for (int i = 0; i < n; i++) arr.add(metas[i].name);
+  };
+  hooks.getPlaylistOn = []() { return playlist.enabled; };
+  hooks.setPlaylistOn = [](bool on) {
+    if (on && !playlist.enabled) {
+      playlist.enabled = true;
+      playlist.current = "";
+      playlistAdvance(+1);
+    } else if (!on) {
+      playlist.enabled = false;
+    }
+  };
+  hooks.getShuffle = []() { return playlist.shuffle; };
+  hooks.setShuffle = [](bool on) { playlist.shuffle = on; };
+  hooks.playlistStep = [](int dir) {
+    if (!playlist.enabled) playlist.enabled = true;
+    playlistAdvance(dir);
+  };
+  hooks.getPlaylistList = []() { return playlist.list; };
+  hooks.setPlaylistList = [](const String& l) {
+    playlist.list = l;
+    if (playlist.enabled) playlistAdvance(+1);
+  };
+  hooks.playlistOptions = [](JsonArray arr) {
+    JsonDocument doc;
+    if (!playlistsLoad(doc)) return;
+    for (JsonObject l : doc["lists"].as<JsonArray>()) {
+      const char* nm = l["name"] | "";
+      // String() forces a copy into the destination doc — `doc` dies when
+      // this lambda returns, long before the discovery payload serializes.
+      if (nm[0]) arr.add(String(nm));
+    }
   };
   hooks.version = CUBE_VERSION;
   haMqtt.begin(settings.mqttHost, settings.mqttPort, settings.mqttUser,
@@ -1081,9 +1223,14 @@ void handleStatus() {
   String plCur = playlist.current;
   plCur.replace("\\", "\\\\");
   plCur.replace("\"", "\\\"");
+  String plList = playlist.list;
+  plList.replace("\\", "\\\\");
+  plList.replace("\"", "\\\"");
   json += ",\"playlist\":{\"enabled\":" + String(playlist.enabled ? "true" : "false") +
           ",\"shuffle\":" + String(playlist.shuffle ? "true" : "false") +
-          ",\"current\":\"" + plCur + "\",\"dwellRemainingSec\":" + String(dwellRem, 0) + "}";
+          ",\"current\":\"" + plCur + "\",\"dwellRemainingSec\":" + String(dwellRem, 0) +
+          ",\"list\":\"" + plList +
+          "\",\"dwellOverrideSec\":" + String(playlist.dwellOverride, 0) + "}";
   json += ",\"version\":\"" CUBE_VERSION "\"}";
   server.send(200, "application/json", json);
 }
@@ -1405,7 +1552,9 @@ void setupWebServer() {
     const float dwell = server.hasArg("dwellSec")
                             ? max(1.0f, server.arg("dwellSec").toFloat())
                             : 20.0f;
-    savePresetSnapshot(name, priority, dwell);
+    // saveText=0: leave the words out of a text-3d preset (style-only).
+    const bool saveText = server.arg("saveText") != "0";
+    savePresetSnapshot(name, priority, dwell, saveText);
     haMqtt.refreshDiscovery();  // preset select options changed
     server.send(200, "text/plain", "ok");
   });
@@ -1429,6 +1578,7 @@ void setupWebServer() {
     }
     presetDelete(name);
     if (playlist.current == name) playlist.current = "";  // cursor restarts cleanly
+    playlistsFixupPreset(name, "");
     haMqtt.refreshDiscovery();
     server.send(200, "text/plain", "ok");
   });
@@ -1589,6 +1739,7 @@ void setupWebServer() {
     }
     if (slugChanged) presetDelete(from);
     if (playlist.current == from) playlist.current = to;
+    playlistsFixupPreset(from, to);
     haMqtt.refreshDiscovery();
     server.send(200, "text/plain", "ok");
   });
@@ -1607,6 +1758,20 @@ void setupWebServer() {
     }
     if (!authed()) return;
     if (server.hasArg("shuffle")) playlist.shuffle = server.arg("shuffle") == "1";
+    // Curated list selection ("" = all presets). Switching mid-cycle re-picks
+    // so the change is visible immediately.
+    if (server.hasArg("list")) {
+      playlist.list = server.arg("list");
+      if (playlist.enabled) playlistAdvance(+1);
+    }
+    // Demo dwell override (0 = per-preset times). Applies to the preset
+    // showing right now too — "cycle at 5s" should not wait out a 60s dwell.
+    if (server.hasArg("dwell")) {
+      playlist.dwellOverride =
+          constrain(server.arg("dwell").toFloat(), 0.0f, 3600.0f);
+      if (playlist.enabled && playlist.dwellOverride > 0)
+        playlist.dwellSec = playlist.dwellOverride;
+    }
     if (server.hasArg("enabled")) {
       const bool en = server.arg("enabled") == "1";
       if (en && !playlist.enabled) {
@@ -1617,6 +1782,93 @@ void setupWebServer() {
         playlist.enabled = en;
       }
     }
+    haMqtt.markDirty();  // transport state changed — sync HA promptly
+    server.send(200, "text/plain", "ok");
+  });
+  // ---- curated playlists ----
+  // List all saved playlists + the active selection. Open to guests (the
+  // sidebar shows it); mutation below is owner-only.
+  server.on("/api/playlists", HTTP_GET, []() {
+    JsonDocument doc;
+    playlistsLoad(doc);
+    JsonDocument out;
+    out["active"] = playlist.list;
+    out["dwellOverrideSec"] = playlist.dwellOverride;
+    JsonArray lists = out["lists"].to<JsonArray>();
+    for (JsonObject l : doc["lists"].as<JsonArray>()) lists.add(l);
+    String json;
+    serializeJson(out, json);
+    server.send(200, "application/json", json);
+  });
+  // Create/replace one playlist: ?name=<n>, body = JSON array of preset
+  // names in play order. Owner-only.
+  server.on("/api/playlists/save", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    String name = server.arg("name");
+    for (size_t i = 0; i < name.length();)
+      if ((uint8_t)name[i] < 0x20) name.remove(i, 1); else i++;
+    if (name.length() == 0) {
+      server.send(400, "text/plain", "name required");
+      return;
+    }
+    JsonDocument body;
+    if (deserializeJson(body, server.arg("plain")) || !body.is<JsonArray>()) {
+      server.send(400, "text/plain", "body must be a JSON array of preset names");
+      return;
+    }
+    JsonDocument doc;
+    playlistsLoad(doc);
+    JsonArray lists = doc["lists"].isNull() ? doc["lists"].to<JsonArray>()
+                                            : doc["lists"].as<JsonArray>();
+    JsonObject mine;
+    for (JsonObject l : lists)
+      if (name == (l["name"] | "")) { mine = l; break; }
+    if (mine.isNull()) {
+      if ((int)lists.size() >= kMaxPlaylists) {
+        server.send(507, "text/plain", "playlist limit reached (8) — delete one first");
+        return;
+      }
+      mine = lists.add<JsonObject>();
+      mine["name"] = name;
+    }
+    JsonArray ps = mine["presets"].to<JsonArray>();  // to<> clears any old members
+    int count = 0;
+    for (const char* nm : body.as<JsonArray>()) {
+      if (nm && count < kMaxPresets) {
+        ps.add(nm);
+        count++;
+      }
+    }
+    if (!playlistsStore(doc)) {
+      server.send(500, "text/plain", "write failed");
+      return;
+    }
+    haMqtt.refreshDiscovery();  // the HA collection picker's options changed
+    server.send(200, "text/plain", "ok");
+  });
+  server.on("/api/playlists/delete", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    const String name = server.arg("name");
+    JsonDocument doc;
+    playlistsLoad(doc);
+    JsonArray lists = doc["lists"].as<JsonArray>();
+    bool found = false;
+    for (size_t i = 0; i < lists.size(); i++) {
+      if (name == (lists[i]["name"] | "")) {
+        lists.remove(i);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      server.send(404, "text/plain", "no such playlist");
+      return;
+    }
+    playlistsStore(doc);
+    if (playlist.list == name) playlist.list = "";  // fall back to the default pool
+    haMqtt.refreshDiscovery();
     server.send(200, "text/plain", "ok");
   });
   // Manual skip (owner-only). Enables the cycle if it was off.
@@ -1625,6 +1877,7 @@ void setupWebServer() {
     if (!authed()) return;
     if (!playlist.enabled) { playlist.enabled = true; }
     playlistAdvance(+1);
+    haMqtt.markDirty();
     server.send(200, "text/plain", "ok");
   });
   server.on("/api/playlist/prev", HTTP_POST, []() {
@@ -1632,6 +1885,7 @@ void setupWebServer() {
     if (!authed()) return;
     if (!playlist.enabled) { playlist.enabled = true; }
     playlistAdvance(-1);
+    haMqtt.markDirty();
     server.send(200, "text/plain", "ok");
   });
   // Runtime LED hardware config: pins + single/dual split. Applies live
@@ -1703,6 +1957,9 @@ void setupWebServer() {
     if (type == "str") params.setStr(key.c_str(), v.c_str());
     else if (type == "bool") params.setBool(key.c_str(), v == "true" || v == "1");
     else params.setNum(key.c_str(), v.toFloat());
+    // Console-typed words are as sticky as HA-pushed ones: they survive
+    // pattern swaps and style-only preset loads.
+    if (key == "text" && settings.patternId == "text-3d") g_haText = v;
     server.send(200, "text/plain", "ok");
   });
   // Configure automatic modulation for one NUMERIC param of the active pattern

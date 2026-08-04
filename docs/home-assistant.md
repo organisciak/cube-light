@@ -19,8 +19,22 @@ your broker and it announces itself — no YAML needed for the entities.
 | `select.cube_light_pattern` | Switch the live pattern (full registry). |
 | `select.cube_light_preset` | Load a saved preset. Re-announced whenever presets change; hidden until at least one preset exists. |
 | `text.cube_light_text` | Sets the text-3d message. Sticks across pattern swaps until reboot; a preset with its own text wins. |
+| `switch.cube_light_playlist` | Play/pause the preset cycle — synced with the console, so a manually started cycle shows here too. |
+| `switch.cube_light_shuffle` | Shuffle mode (priority-weighted). |
+| `button.cube_light_next_preset` / `..._previous_preset` | Skip within the cycle (starts it if stopped). |
+| `select.cube_light_playlist_collection` | Which curated playlist the cycle plays; "All presets" = the default pool. |
 
 (Entity ids may differ slightly if you rename things; check the device page.)
+
+## Curated playlists & demo dwell
+
+Playlists are named subsets of the preset store (console → Presets sidebar →
+playlist picker; tick presets in or out). `""`/"All presets" keeps today's
+behavior. The REST surface: `GET /api/playlists`, `POST /api/playlists/save?name=X`
+(body = JSON array of preset names in play order), `POST /api/playlists/delete`,
+and `POST /api/playlist?list=X&dwell=N` — `dwell` overrides every preset's
+dwell time (5–8s makes a great filming/demo reel; `0` returns to per-preset
+times). In curated lists nothing is excluded: priority 0 plays at weight 1.
 
 State flows both ways: changes made on the cube's own console (pattern picks,
 playlist advances, brightness) publish back to HA within a moment, plus a 30s

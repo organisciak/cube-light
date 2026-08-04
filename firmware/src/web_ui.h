@@ -79,6 +79,9 @@ pattern below won't show until it stops.</div>
 <label>Mic reactivity</label>
 <button id="micToggle" style="width:100%;padding:10px;font-size:15px"></button>
 
+<label>Brightness</label>
+<div class="row"><input type="range" id="bright" min="1" max="100" step="1"><output id="brightv"></output></div>
+
 <details open id="paramsBox"><summary>Pattern parameters</summary>
 <label id="advTogWrap"><input type="checkbox" id="advTog"> ⚙ Advanced — auto-modulate params (∿)</label>
 <div id="params"></div>
@@ -99,12 +102,30 @@ pattern below won't show until it stops.</div>
     <button id="plNext" title="Next">⏭</button>
     <button id="plShuffle" title="Shuffle (priority-weighted)">🔀</button>
   </div>
+  <div class="prow" style="margin:0 0 6px">
+    <select id="plList" style="flex:1" title="Which collection the cycle plays"></select>
+    <button id="plListDel" class="plbtn" title="Delete this playlist" style="display:none">✕</button>
+  </div>
+  <div class="prow" style="margin:0 0 10px">
+    <label style="flex:0 0 auto;margin:0;font-size:12px;color:#999">Dwell</label>
+    <select id="plDwell" style="flex:1" title="Override every preset's dwell (demo mode for filming/showing off)">
+      <option value="0">preset times</option>
+      <option value="5">5s — demo</option>
+      <option value="8">8s — demo</option>
+      <option value="15">15s</option>
+      <option value="30">30s</option>
+      <option value="60">60s</option>
+    </select>
+  </div>
   <div class="plcap" id="plCap"><span style="flex:1">preset — tap to show</span><span style="width:48px;text-align:center">dwell s</span><span style="width:48px;text-align:center">★ 0–5</span><span style="width:52px"></span></div>
   <div id="plRows"></div>
   <div class="prow" id="presetSave" style="margin:10px 0 0">
     <input type="text" id="presetName" placeholder="Save current look as…">
     <button id="presetSaveBtn" class="pri">Save</button>
   </div>
+  <label id="saveTextWrap" style="display:none;font-size:12px;color:#999;margin:6px 0 0;cursor:pointer" title="Checked: the preset restores these exact words. Unchecked: the preset only styles the text — whatever words are showing (e.g. a song title from Home Assistant) stay up.">
+    <input type="checkbox" id="saveTextCb" checked style="width:auto"> save the words too
+  </label>
   <div class="prow" id="presetIO" style="display:none;margin:4px 0 0">
     <button id="presetExport" title="Download all presets as JSON">⬇ Export</button>
     <label class="pri" style="cursor:pointer;padding:8px 12px;border-radius:6px;font-size:13px" title="Import presets from a JSON file (overwrites matching names)">⬆ Import<input type="file" id="presetImport" accept="application/json,.json" style="display:none"></label>
@@ -143,6 +164,9 @@ function applyStatus(s){
     $('adminLink').style.display='none';
   }
   $('stat').textContent=`ip ${s.ip} · rssi ${s.rssi}dBm · ${s.fps}fps target · v${s.version}`;
+  if(document.activeElement!==$('bright')){
+    $('bright').value=Math.round(s.brightness*100);$('brightv').textContent=$('bright').value+'%';
+  }
   plState=s.playlist||{};
   drawPlaylist();
   if(s.pattern!==lastPat&&!$('params').contains(document.activeElement)){lastPat=s.pattern;loadParams()}
@@ -167,7 +191,7 @@ async function refresh(){
   lastPat=s.pattern;
   applyStatus(s);
   loadParams();
-  loadPresets();
+  loadPlaylists().then(loadPresets);
 }
 let micOn=true;
 let isGuest=false;
@@ -181,6 +205,10 @@ function drawMic(){
   b.style.color=micOn?'#fff':'#999';
 }
 $('micToggle').onclick=async()=>{micOn=!micOn;drawMic();await post('/api/mic?on='+(micOn?1:0))};
+{let lastB=0;
+$('bright').oninput=e=>{$('brightv').textContent=e.target.value+'%';
+  const now=Date.now();if(now-lastB>=150){lastB=now;post('/api/brightness?v='+(e.target.value/100))}};
+$('bright').onchange=e=>post('/api/brightness?v='+(e.target.value/100));}
 const T={NUM:0,BOOL:1,ENUM:2,PAL:3,STR:4};
 // Bucket a param by key/type into a Pattern/Audio/Color subsection. Pure
 // JS heuristic — the C++ ParamSpec struct is untouched.
@@ -297,6 +325,19 @@ let presetNames=[];
 let anyAmbient=false;  // drives the "ambient only" playlist hint when mic is off
 function presetRow(p){
   const row=document.createElement('div');row.className='plrow';row.dataset.name=p.name;
+  // Named playlist selected (owner): each row gets a membership checkbox.
+  const al=activeListObj();
+  if(al&&!isGuest){
+    const cb=document.createElement('input');cb.type='checkbox';
+    cb.style.cssText='width:auto;flex:0 0 auto';cb.title='In playlist "'+plActive+'"';
+    cb.checked=(al.presets||[]).includes(p.name);
+    cb.onchange=()=>{
+      let m=(al.presets||[]).filter(n=>presetNames.includes(n)&&n!==p.name);
+      if(cb.checked)m.push(p.name);
+      saveActiveList(m);
+    };
+    row.appendChild(cb);
+  }
   const nm=document.createElement('div');nm.className='plname';nm.title='Show this preset';
   nm.innerHTML='<div>'+esc(p.name)+'</div><div class="plpat"><span class="plreact">'+(p.reactive?'🎵':'🌙')+'</span> '+esc(p.pattern)+'</div>';
   nm.onclick=async()=>{await post('/api/presets/load?name='+encodeURIComponent(p.name));refresh()};
@@ -313,13 +354,21 @@ function presetRow(p){
     dw.onchange=()=>{const v=Math.max(1,Math.round(+dw.value)||1);dw.value=v;post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&dwellSec='+v)};
     const pr=document.createElement('input');pr.type='number';pr.min=0;pr.max=5;pr.value=p.priority;pr.title='Shuffle priority 0-5 (5 = most often, 0 = never auto-plays)';
     pr.onchange=()=>{const v=Math.min(5,Math.max(0,Math.round(+pr.value)||0));pr.value=v;post('/api/presets/meta?name='+encodeURIComponent(p.name)+'&priority='+v)};
+    const ow=document.createElement('button');ow.className='plbtn';ow.textContent='💾';
+    ow.title='Overwrite this preset with the current look (keeps dwell & priority)';
+    ow.onclick=async()=>{
+      if(!confirm('Overwrite "'+p.name+'" with the current look?'))return;
+      const st=lastPat==='text-3d'&&!$('saveTextCb').checked?'&saveText=0':'';
+      await post('/api/presets/save?name='+encodeURIComponent(p.name)+'&priority='+p.priority+'&dwellSec='+(+p.dwellSec)+st);
+      toast('Updated "'+p.name+'"');loadPresets();
+    };
     const ren=document.createElement('button');ren.className='plbtn';ren.textContent='✎';ren.title='Rename';
     ren.onclick=async()=>{const nn=prompt('Rename "'+p.name+'" to:',p.name);if(!nn||!nn.trim()||nn.trim()===p.name)return;
       if(presetNames.includes(nn.trim())){alert('A preset with that name already exists');return}
       await post('/api/presets/rename?from='+encodeURIComponent(p.name)+'&to='+encodeURIComponent(nn.trim()));loadPresets()};
     const del=document.createElement('button');del.className='plbtn';del.textContent='✕';del.title='Delete';
     del.onclick=async()=>{if(confirm('Delete "'+p.name+'"?')){await post('/api/presets/delete?name='+encodeURIComponent(p.name));loadPresets()}};
-    row.append(dw,pr,ren,del);
+    row.append(dw,pr,ow,ren,del);
   }
   return row;
 }
@@ -340,6 +389,7 @@ async function loadPresets(){
     for(const p of items)box.appendChild(presetRow(p));
   }
   $('presetSave').style.display=isGuest?'none':'flex';
+  $('saveTextWrap').style.display=(!isGuest&&lastPat==='text-3d')?'block':'none';
   $('presetIO').style.display=isGuest?'none':'flex';
   markNow();
 }
@@ -349,7 +399,8 @@ $('presetName').oninput=()=>{$('presetSaveBtn').textContent=presetNames.includes
 $('presetName').onkeydown=e=>{if(e.key==='Enter')$('presetSaveBtn').click()};
 $('presetSaveBtn').onclick=async()=>{
   const n=$('presetName').value.trim();if(!n)return;
-  await post('/api/presets/save?name='+encodeURIComponent(n));
+  const st=lastPat==='text-3d'&&!$('saveTextCb').checked?'&saveText=0':'';
+  await post('/api/presets/save?name='+encodeURIComponent(n)+st);
   $('presetName').value='';$('presetSaveBtn').textContent='Saved ✓';
   setTimeout(()=>{$('presetSaveBtn').textContent='Save'},1200);
   loadPresets();
@@ -364,6 +415,46 @@ $('presetImport').onchange=async(e)=>{
   else alert('Import failed');
   loadPresets();
 };
+// ---- curated playlists (collections of presets; "" = all presets) ----
+let plLists=[],plActive='';
+function activeListObj(){return plLists.find(l=>l.name===plActive)}
+async function saveActiveList(members){
+  await fetch('/api/playlists/save?name='+encodeURIComponent(plActive),
+              {method:'POST',body:JSON.stringify(members)});
+  await loadPlaylists();loadPresets();
+}
+async function loadPlaylists(){
+  let d;try{d=await (await fetch('/api/playlists')).json()}catch(e){return}
+  plLists=d.lists||[];plActive=d.active||'';
+  const sel=$('plList');sel.innerHTML='';
+  const opt=(v,t)=>{const o=document.createElement('option');o.value=v;o.textContent=t;sel.appendChild(o)};
+  opt('','All presets (default)');
+  for(const l of plLists)opt(l.name,'📃 '+l.name+' ('+(l.presets||[]).length+')');
+  if(!isGuest)opt('__new','➕ New playlist…');
+  sel.value=plActive;if(sel.selectedIndex<0)sel.value='';
+  sel.disabled=isGuest;
+  $('plListDel').style.display=(!isGuest&&plActive)?'':'none';
+}
+$('plList').onchange=async e=>{
+  if(e.target.value==='__new'){
+    const n=(prompt('New playlist name:')||'').trim();
+    if(!n){loadPlaylists();return}
+    if(plLists.some(l=>l.name===n)){alert('A playlist with that name already exists');loadPlaylists();return}
+    await fetch('/api/playlists/save?name='+encodeURIComponent(n),{method:'POST',body:'[]'});
+    await post('/api/playlist?list='+encodeURIComponent(n));
+    await loadPlaylists();loadPresets();
+    toast('Tick the presets that belong in "'+n+'"');
+    return;
+  }
+  await post('/api/playlist?list='+encodeURIComponent(e.target.value));
+  await loadPlaylists();loadPresets();poll();
+};
+$('plListDel').onclick=async()=>{
+  if(!plActive||!confirm('Delete playlist "'+plActive+'"? (Presets themselves are untouched.)'))return;
+  await post('/api/playlists/delete?name='+encodeURIComponent(plActive));
+  await loadPlaylists();loadPresets();poll();
+};
+$('plDwell').onchange=async e=>{await post('/api/playlist?dwell='+e.target.value);poll()};
 // ---- playlist state ----
 let plState={};
 function markNow(){
@@ -379,13 +470,24 @@ function drawPlaylist(){
   $('plPlay').title=noStart?'Owners start the cycle; guests may pause':'Play/pause cycle';
   $('plPlay').textContent=plState.enabled?'⏸':'▶';
   $('plShuffle').style.background=plState.shuffle?'#2a5aa5':'#26262e';
+  const ovr=Math.round(+plState.dwellOverrideSec||0);
   $('plStatus').textContent=plState.enabled
     ?('Now: '+(plState.current||'—')+' · '+Math.max(0,Math.round(plState.dwellRemainingSec))+'s left'
+      +(plState.list?' · 📃 '+plState.list:'')
+      +(ovr?' · ⏱ '+ovr+'s each':'')
       +(!micOn&&anyAmbient?' · 🌙 ambient only':''))
-    :'Cycle paused';
+    :'Cycle paused'+(plState.list?' · 📃 '+plState.list:'');
+  // Reflect server-side changes (another phone, HA) without fighting focus.
+  if(document.activeElement!==$('plDwell')){
+    const v=String(ovr);
+    if([...$('plDwell').options].some(o=>o.value===v))$('plDwell').value=v;
+  }
+  if(document.activeElement!==$('plList')&&(plState.list||'')!==plActive){
+    plActive=plState.list||'';loadPlaylists().then(loadPresets);
+  }
   markNow();
 }
-$('plToggle').onclick=()=>{$('sidebar').classList.toggle('open');loadPresets();poll()};
+$('plToggle').onclick=()=>{$('sidebar').classList.toggle('open');loadPlaylists().then(loadPresets);poll()};
 $('plClose').onclick=()=>$('sidebar').classList.remove('open');
 addEventListener('keydown',e=>{if(e.key==='Escape')$('sidebar').classList.remove('open')});
 $('plPlay').onclick=async()=>{

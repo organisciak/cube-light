@@ -38,8 +38,21 @@ struct HaMqttHooks {
   std::function<void(const String&)> setText;
   std::function<void(JsonArray)> patternOptions;
   std::function<void(JsonArray)> presetOptions;
+  // Playlist transport (play/pause/next/prev/shuffle + collection picker).
+  std::function<bool()> getPlaylistOn;
+  std::function<void(bool)> setPlaylistOn;
+  std::function<bool()> getShuffle;
+  std::function<void(bool)> setShuffle;
+  std::function<void(int)> playlistStep;  // +1 next / -1 prev
+  std::function<String()> getPlaylistList;             // "" = all presets
+  std::function<void(const String&)> setPlaylistList;  // "" = all presets
+  std::function<void(JsonArray)> playlistOptions;      // curated list names
   const char* version = "";
 };
+
+// Select-option sentinel for "no curated list" (MQTT select state can't be
+// an empty string).
+#define HA_ALL_PRESETS "All presets"
 
 class HaMqtt {
  public:
@@ -94,6 +107,11 @@ class HaMqtt {
       client_.subscribe("cube/pattern/set");
       client_.subscribe("cube/preset/set");
       client_.subscribe("cube/text/set");
+      client_.subscribe("cube/playlist/set");
+      client_.subscribe("cube/playlist/next");
+      client_.subscribe("cube/playlist/prev");
+      client_.subscribe("cube/shuffle/set");
+      client_.subscribe("cube/playlist/list/set");
       client_.publish("cube/avail", "online", true);
     }
     client_.loop();
@@ -130,6 +148,16 @@ class HaMqtt {
       hooks_.loadPreset(body);
     } else if (t == "cube/text/set") {
       hooks_.setText(body);
+    } else if (t == "cube/playlist/set") {
+      hooks_.setPlaylistOn(body == "ON");
+    } else if (t == "cube/playlist/next") {
+      hooks_.playlistStep(+1);
+    } else if (t == "cube/playlist/prev") {
+      hooks_.playlistStep(-1);
+    } else if (t == "cube/shuffle/set") {
+      hooks_.setShuffle(body == "ON");
+    } else if (t == "cube/playlist/list/set") {
+      hooks_.setPlaylistList(body == HA_ALL_PRESETS ? String("") : body);
     }
     dirty_ = true;  // echo the new state back promptly
   }
@@ -208,6 +236,64 @@ class HaMqtt {
       deviceBlock(doc["dev"].to<JsonObject>(), false);
       publishConfig("text", "text", doc);
     }
+    // Playlist transport: play/pause + shuffle as switches, next/prev as
+    // buttons, plus the curated-collection picker.
+    {
+      JsonDocument doc;
+      doc["name"] = "Playlist";
+      doc["uniq_id"] = devId_ + "_playlist";
+      doc["cmd_t"] = "cube/playlist/set";
+      doc["stat_t"] = "cube/playlist/state";
+      doc["avty_t"] = "cube/avail";
+      doc["icon"] = "mdi:playlist-play";
+      deviceBlock(doc["dev"].to<JsonObject>(), false);
+      publishConfig("switch", "playlist", doc);
+    }
+    {
+      JsonDocument doc;
+      doc["name"] = "Shuffle";
+      doc["uniq_id"] = devId_ + "_shuffle";
+      doc["cmd_t"] = "cube/shuffle/set";
+      doc["stat_t"] = "cube/shuffle/state";
+      doc["avty_t"] = "cube/avail";
+      doc["icon"] = "mdi:shuffle-variant";
+      deviceBlock(doc["dev"].to<JsonObject>(), false);
+      publishConfig("switch", "shuffle", doc);
+    }
+    {
+      JsonDocument doc;
+      doc["name"] = "Next preset";
+      doc["uniq_id"] = devId_ + "_next";
+      doc["cmd_t"] = "cube/playlist/next";
+      doc["avty_t"] = "cube/avail";
+      doc["icon"] = "mdi:skip-next";
+      deviceBlock(doc["dev"].to<JsonObject>(), false);
+      publishConfig("button", "next", doc);
+    }
+    {
+      JsonDocument doc;
+      doc["name"] = "Previous preset";
+      doc["uniq_id"] = devId_ + "_prev";
+      doc["cmd_t"] = "cube/playlist/prev";
+      doc["avty_t"] = "cube/avail";
+      doc["icon"] = "mdi:skip-previous";
+      deviceBlock(doc["dev"].to<JsonObject>(), false);
+      publishConfig("button", "prev", doc);
+    }
+    {
+      JsonDocument doc;
+      doc["name"] = "Playlist collection";
+      doc["uniq_id"] = devId_ + "_playlist_list";
+      doc["cmd_t"] = "cube/playlist/list/set";
+      doc["stat_t"] = "cube/playlist/list/state";
+      doc["avty_t"] = "cube/avail";
+      doc["icon"] = "mdi:playlist-star";
+      JsonArray opts = doc["options"].to<JsonArray>();
+      opts.add(HA_ALL_PRESETS);
+      hooks_.playlistOptions(opts);
+      deviceBlock(doc["dev"].to<JsonObject>(), false);
+      publishConfig("select", "playlist_list", doc);
+    }
   }
 
   void publishState() {
@@ -223,6 +309,11 @@ class HaMqtt {
     const String preset = hooks_.getPreset();
     if (preset.length()) client_.publish("cube/preset/state", preset.c_str());
     client_.publish("cube/text/state", hooks_.getText().c_str());
+    client_.publish("cube/playlist/state", hooks_.getPlaylistOn() ? "ON" : "OFF");
+    client_.publish("cube/shuffle/state", hooks_.getShuffle() ? "ON" : "OFF");
+    const String list = hooks_.getPlaylistList();
+    client_.publish("cube/playlist/list/state",
+                    list.length() ? list.c_str() : HA_ALL_PRESETS);
   }
 
   WiFiClient net_;
