@@ -117,6 +117,10 @@ struct Settings {
   int ledPin;         // output 1 GPIO
   int ledPin2;        // output 2 GPIO; -1 = single unbroken chain
   int ledSplit;       // LEDs on output 1 when split
+  int ledSkip1;       // LEDs snipped off the START of output 1's chain
+  int ledTrim1;       // LEDs snipped off the END of output 1's chain
+  int ledSkip2;       // same, output 2
+  int ledTrim2;
   bool micLeft;       // PDM channel format
   float micSquelch;   // raw RMS below this = silence
   bool micEnabled;    // master toggle: false = patterns see silence
@@ -151,6 +155,10 @@ void loadSettings() {
   settings.ledPin = prefs.getInt("ledpin", CUBE_LED_PIN);
   settings.ledPin2 = prefs.getInt("ledpin2", -1);
   settings.ledSplit = prefs.getInt("ledsplit", CUBE_LED_SPLIT);
+  settings.ledSkip1 = prefs.getInt("skip1", 0);
+  settings.ledTrim1 = prefs.getInt("trim1", 0);
+  settings.ledSkip2 = prefs.getInt("skip2", 0);
+  settings.ledTrim2 = prefs.getInt("trim2", 0);
   settings.micLeft = prefs.getBool("micleft", false);
   settings.micSquelch = prefs.getFloat("micsq", 60.0f);
   settings.micEnabled = prefs.getBool("micen", true);
@@ -168,6 +176,10 @@ void saveHardware() {
   prefs.putInt("ledpin", settings.ledPin);
   prefs.putInt("ledpin2", settings.ledPin2);
   prefs.putInt("ledsplit", settings.ledSplit);
+  prefs.putInt("skip1", settings.ledSkip1);
+  prefs.putInt("trim1", settings.ledTrim1);
+  prefs.putInt("skip2", settings.ledSkip2);
+  prefs.putInt("trim2", settings.ledTrim2);
   prefs.putBool("micleft", settings.micLeft);
   prefs.putFloat("micsq", settings.micSquelch);
   prefs.end();
@@ -234,6 +246,13 @@ void initStrips() {
                      : " (single chain)");
 }
 
+// Debug-only snip simulation, per output (NOT persisted — a reboot always
+// clears it): pretend an intact chain lost simSkip[] LEDs at its start /
+// simTrim[] at its end, so the ledSkip/ledTrim compensation can be rehearsed
+// before (or without) cutting real LEDs. Set via POST /api/ledsim.
+int simSkip[2] = {0, 0};
+int simTrim[2] = {0, 0};
+
 uint8_t colorPerm[3] = {0, 1, 2};  // perm[wireSlot] = source channel (0=R 1=G 2=B)
 
 void applyColorOrder(const String& order) {
@@ -242,17 +261,41 @@ void applyColorOrder(const String& order) {
   }
 }
 
+// Push the logical frame to the strips, compensating for physically removed
+// LEDs (burnt-out pixels snipped off a chain). If an output lost `ledSkip`
+// LEDs at its start, data now enters at what used to be wire position
+// base+skip — so data slot p carries logical LED (base + skip + p), every
+// surviving LED keeps its calibrated position, and the snipped spots simply
+// go dark. LEDs trimmed off the END need no shift; `ledTrim` just marks that
+// tail absent. The simSkip/simTrim counters do the inverse on intact
+// hardware: wire slot s displays what data slot (s - simSkip) would land
+// there on a snipped chain, with the "missing" slots forced dark — so
+// sim N + skip N should look identical to an untouched cube minus N LEDs.
 void show(const uint8_t* rgb) {
   if (!strip1) return;
   const float limit = currentLimitScale(rgb, NUM_LEDS, CUBE_PER_LED_MA,
                                         CUBE_IDLE_MA_PER_LED, settings.supplyMA);
   const float k = limit * settings.brightness;
-  for (int i = 0; i < NUM_LEDS; i++) {
-    const uint8_t* px = rgb + i * 3;
-    const RgbColor c((uint8_t)(px[colorPerm[0]] * k), (uint8_t)(px[colorPerm[1]] * k),
-                     (uint8_t)(px[colorPerm[2]] * k));
-    if (i < stripSplit) strip1->SetPixelColor(i, c);
-    else if (strip2) strip2->SetPixelColor(i - stripSplit, c);
+  const int base[2] = {0, stripSplit};
+  const int len[2] = {stripSplit, NUM_LEDS - stripSplit};
+  const int skip[2] = {settings.ledSkip1, settings.ledSkip2};
+  const int trim[2] = {settings.ledTrim1, settings.ledTrim2};
+  for (int o = 0; o < 2; o++) {
+    if (o == 1 && !strip2) break;
+    for (int s = 0; s < len[o]; s++) {
+      RgbColor c(0, 0, 0);
+      if (s >= simSkip[o] && s < len[o] - simTrim[o]) {
+        const int li = base[o] + skip[o] + (s - simSkip[o]);
+        if (li < base[o] + len[o] - trim[o]) {
+          const uint8_t* px = rgb + li * 3;
+          c = RgbColor((uint8_t)(px[colorPerm[0]] * k),
+                       (uint8_t)(px[colorPerm[1]] * k),
+                       (uint8_t)(px[colorPerm[2]] * k));
+        }
+      }
+      if (o == 0) strip1->SetPixelColor(s, c);
+      else strip2->SetPixelColor(s, c);
+    }
   }
   strip1->Show();
   if (strip2) strip2->Show();
@@ -1211,6 +1254,10 @@ void handleStatus() {
   json += ",\"up\":\"" + settings.upAxis + "\"";
   json += ",\"ledPin\":" + String(settings.ledPin) + ",\"ledPin2\":" + String(settings.ledPin2) +
           ",\"ledSplit\":" + String(settings.ledSplit);
+  json += ",\"ledSkip1\":" + String(settings.ledSkip1) + ",\"ledTrim1\":" + String(settings.ledTrim1) +
+          ",\"ledSkip2\":" + String(settings.ledSkip2) + ",\"ledTrim2\":" + String(settings.ledTrim2);
+  json += ",\"simSkip1\":" + String(simSkip[0]) + ",\"simTrim1\":" + String(simTrim[0]) +
+          ",\"simSkip2\":" + String(simSkip[1]) + ",\"simTrim2\":" + String(simTrim[1]);
   json += ",\"layout\":{\"flipX\":" + String(settings.layout.flipX ? "true" : "false") +
           ",\"flipY\":" + String(settings.layout.flipY ? "true" : "false") +
           ",\"flipZ\":" + String(settings.layout.flipZ ? "true" : "false") +
@@ -1888,16 +1935,36 @@ void setupWebServer() {
     haMqtt.markDirty();
     server.send(200, "text/plain", "ok");
   });
-  // Runtime LED hardware config: pins + single/dual split. Applies live
-  // (strips are rebuilt) and persists.
+  // Runtime LED hardware config: pins + single/dual split + snipped-LED
+  // compensation. Applies live (strips are rebuilt) and persists.
   server.on("/api/ledcfg", HTTP_POST, []() {
     if (guestBlocked()) return;
     if (!authed()) return;
     settings.ledPin = server.arg("pin").toInt();
     settings.ledPin2 = server.hasArg("pin2") ? server.arg("pin2").toInt() : -1;
     settings.ledSplit = server.hasArg("split") ? server.arg("split").toInt() : NUM_LEDS;
+    if (server.hasArg("skip1"))
+      settings.ledSkip1 = constrain(server.arg("skip1").toInt(), 0, NUM_LEDS - 1);
+    if (server.hasArg("trim1"))
+      settings.ledTrim1 = constrain(server.arg("trim1").toInt(), 0, NUM_LEDS - 1);
+    if (server.hasArg("skip2"))
+      settings.ledSkip2 = constrain(server.arg("skip2").toInt(), 0, NUM_LEDS - 1);
+    if (server.hasArg("trim2"))
+      settings.ledTrim2 = constrain(server.arg("trim2").toInt(), 0, NUM_LEDS - 1);
     saveHardware();
     initStrips();
+    server.send(200, "text/plain", "ok");
+  });
+  // Debug: emulate a snipped chain on intact hardware (see show()). Runtime
+  // only — deliberately never persisted, so a reboot clears the simulation.
+  // Missing args read as 0, i.e. posting with no args clears everything.
+  server.on("/api/ledsim", HTTP_POST, []() {
+    if (guestBlocked()) return;
+    if (!authed()) return;
+    simSkip[0] = constrain(server.arg("sim1").toInt(), 0, NUM_LEDS);
+    simTrim[0] = constrain(server.arg("simtrim1").toInt(), 0, NUM_LEDS);
+    simSkip[1] = constrain(server.arg("sim2").toInt(), 0, NUM_LEDS);
+    simTrim[1] = constrain(server.arg("simtrim2").toInt(), 0, NUM_LEDS);
     server.send(200, "text/plain", "ok");
   });
   // Mic diagnostics: live frame + raw capture stats.

@@ -78,6 +78,22 @@ patterns by `scripts/gen-param-specs.mts`, but the TS side is deprecated and
 that generator is **retired**: do not re-run it, as it would clobber
 firmware-only params (e.g. the spiral `cycle` axis).
 
+## Snipped-LED compensation
+
+Burnt-out LEDs get physically cut off a chain; without compensation, a snip at
+the *start* of an output shifts every surviving LED's data by that many
+positions and scrambles the calibrated geometry. The `/leds` page (and
+`/api/ledcfg` args `skip1/trim1/skip2/trim2`, persisted in NVS) records how
+many LEDs each output lost from its start/end: `show()` then feeds each data
+slot the logical LED that physically sits there, so patterns stay
+geometry-correct and the snipped spots simply go dark. End trims are recorded
+for completeness but need no shift.
+
+To rehearse on an intact cube, the same page has a snip **simulator**
+(`/api/ledsim`, runtime-only — reboot clears it): it makes a chain behave as
+if N LEDs were cut. Simulate N, watch the pattern slide out of place, set
+"snipped from start" to N, and it should snap back with N dark spots.
+
 ## Hardware gotchas (learned the hard way)
 
 - **Arduino core 2.x WiFi crash-loop on mesh networks.** The stock PlatformIO

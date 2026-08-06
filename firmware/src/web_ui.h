@@ -853,7 +853,8 @@ $('buildStart').onclick=async()=>{
 }));
 </script></body></html>)HTML";
 
-// LED hardware page: output pins + chain split, applied live.
+// LED hardware page: output pins + chain split + snipped-LED compensation
+// (with an intact-cube snip simulator for rehearsal), applied live.
 const char kLedsHtml[] = R"HTML(<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -879,17 +880,55 @@ so calibration stays valid. This board's terminals: GPIO 16, 12, 4, 2, 13.</p>
 <label>Output 1 GPIO</label><input type="number" id="lPin">
 <label>Output 2 GPIO (-1 = single chain)</label><input type="number" id="lPin2">
 <label>Split (LEDs on output 1)</label><input type="number" id="lSplit" min="1" max="999">
+<h1>Snipped LEDs</h1>
+<p>If burnt-out LEDs were physically cut off a chain, record how many so
+every surviving LED keeps its calibrated position. Snipped at the
+<b>start</b>: data now enters further along the wire, so patterns would
+otherwise slide over by that many LEDs. Snipped at the <b>end</b> just marks
+the tail absent. Snipped spots stay dark. 0 = intact.</p>
+<label>Output 1 — snipped from start</label><input type="number" id="skip1" min="0" max="999">
+<label>Output 1 — snipped from end</label><input type="number" id="trim1" min="0" max="999">
+<label>Output 2 — snipped from start</label><input type="number" id="skip2" min="0" max="999">
+<label>Output 2 — snipped from end</label><input type="number" id="trim2" min="0" max="999">
 <button id="apply">Apply (live) &amp; save</button>
+<h1>Debug: simulate a snip</h1>
+<p>Rehearse the settings above on an intact cube: this makes a chain act as
+if LEDs were cut (simulated spots go dark, the rest shift along the wire).
+Simulate N snipped, then set “snipped from start” to the same N — the
+picture should snap back into place, minus the dark spots. <b>Not saved</b>;
+a reboot (or Clear) removes it.</p>
+<label>Output 1 — simulate snipped from start</label><input type="number" id="sim1" min="0" max="999">
+<label>Output 1 — simulate snipped from end</label><input type="number" id="simtrim1" min="0" max="999">
+<label>Output 2 — simulate snipped from start</label><input type="number" id="sim2" min="0" max="999">
+<label>Output 2 — simulate snipped from end</label><input type="number" id="simtrim2" min="0" max="999">
+<button id="simApply" style="background:#7a4a2a">Simulate (live only)</button>
+<button id="simClear" style="background:#26262e;color:#ccc">Clear simulation</button>
 <div id="msg"></div>
 <script>
 const $=id=>document.getElementById(id);
 (async()=>{
   const s=await (await fetch('/api/status')).json();
   $('lPin').value=s.ledPin;$('lPin2').value=s.ledPin2;$('lSplit').value=s.ledSplit;
+  $('skip1').value=s.ledSkip1;$('trim1').value=s.ledTrim1;
+  $('skip2').value=s.ledSkip2;$('trim2').value=s.ledTrim2;
+  $('sim1').value=s.simSkip1;$('simtrim1').value=s.simTrim1;
+  $('sim2').value=s.simSkip2;$('simtrim2').value=s.simTrim2;
 })();
 $('apply').onclick=async()=>{
-  await fetch(`/api/ledcfg?pin=${$('lPin').value}&pin2=${$('lPin2').value}&split=${$('lSplit').value}`,{method:'POST'});
+  await fetch(`/api/ledcfg?pin=${$('lPin').value}&pin2=${$('lPin2').value}&split=${$('lSplit').value}`+
+    `&skip1=${$('skip1').value||0}&trim1=${$('trim1').value||0}`+
+    `&skip2=${$('skip2').value||0}&trim2=${$('trim2').value||0}`,{method:'POST'});
   $('msg').textContent='Applied — outputs rebuilt without a reboot.';
+};
+$('simApply').onclick=async()=>{
+  await fetch(`/api/ledsim?sim1=${$('sim1').value||0}&simtrim1=${$('simtrim1').value||0}`+
+    `&sim2=${$('sim2').value||0}&simtrim2=${$('simtrim2').value||0}`,{method:'POST'});
+  $('msg').textContent='Simulating snipped LEDs (clears on reboot).';
+};
+$('simClear').onclick=async()=>{
+  await fetch('/api/ledsim',{method:'POST'});
+  ['sim1','simtrim1','sim2','simtrim2'].forEach(id=>$(id).value=0);
+  $('msg').textContent='Simulation cleared.';
 };
 </script></body></html>)HTML";
 
