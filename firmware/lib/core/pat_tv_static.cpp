@@ -90,7 +90,7 @@ void render(PatternCtx& ctx) {
   const float grayFlicker = clamp01(p.num("grayFlicker", 0.5f));
   const char* paletteName = p.str("palette", "none");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   const float beat = audio.beat;
 

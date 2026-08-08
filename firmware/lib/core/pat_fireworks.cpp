@@ -172,7 +172,7 @@ void render(PatternCtx& ctx) {
   const float dt = ctx.dt;
   const int N = CUBE_N;
 
-  const PaletteRef pal = resolvePalette(p.str("palette", "cyberpunk"));
+  const PaletteRef pal = resolvePalette(p.str("palette", "cyberpunk"), p, ctx.t);
   const float launchInterval = std::fmax(0.1f, p.num("launchInterval", 1.6f));
   const float flightTime = std::fmax(0.1f, p.num("flightTime", 0.7f));
   const int baseParticles = (int)std::fmax(1.0f, std::floor(p.num("particles", 70.0f)));

@@ -57,7 +57,7 @@ void render(PatternCtx& ctx) {
   const float sat = p.num("sat", 0.85f);
   const char* paletteName = p.str("palette", "spectrum");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   // Spawn on the beat envelope's rising edge, or on a sharp level rise
   // (catches fast transients the beat detector misses).

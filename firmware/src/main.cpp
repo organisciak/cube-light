@@ -53,7 +53,7 @@
 #include "ha_mqtt.h"
 #include "web_ui.h"
 
-#define CUBE_VERSION "0.4.2"
+#define CUBE_VERSION "0.4.3"
 
 #ifndef CUBE_LED_PIN
 #define CUBE_LED_PIN 16

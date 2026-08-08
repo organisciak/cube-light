@@ -71,7 +71,7 @@ void render(PatternCtx& ctx) {
   const float cr = p.num("r", 120.0f), cg = p.num("g", 220.0f), cb = p.num("b", 255.0f);
   const char* paletteName = p.str("palette", "ocean");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   s_pulse = std::fmax(s_pulse * std::exp(-4.0f * dt), ctx.audio->beat * beatPulse);
   const float R = baseR + s_pulse;

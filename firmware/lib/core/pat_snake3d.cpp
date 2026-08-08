@@ -335,7 +335,7 @@ void render(PatternCtx& ctx) {
   const int maxLen = (int)std::fmax(0.0f, std::floor(p.num("maxLen", 0.0f)));
   // Auto-only: music speeds the solver up (manual stays fair to fingers).
   const float autoLevelGain = p.num("autoLevelGain", 0.0f);
-  const PaletteRef pal = resolvePalette(p.str("palette", "spectrum"));
+  const PaletteRef pal = resolvePalette(p.str("palette", "spectrum"), p, ctx.t);
   const float appleR = p.num("appleR", 255.0f);
   const float appleG = p.num("appleG", 40.0f);
   const float appleB = p.num("appleB", 40.0f);

@@ -82,7 +82,7 @@ void render(PatternCtx& ctx) {
   const float cornerBoost = p.num("cornerBoost", 1.35f);
   const char* paletteName = p.str("palette", "none");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   const float beat = ctx.audio->beat;
   s_boost = std::fmax(s_boost * std::exp(-2.0f * dt), beat * beatKick);

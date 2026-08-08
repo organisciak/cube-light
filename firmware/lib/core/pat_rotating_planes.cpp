@@ -51,7 +51,7 @@ void render(PatternCtx& ctx) {
   const float cb = p.num("b", 255.0f);
   const char* paletteName = p.str("palette", "none");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
   const float c = (N - 1) / 2.0f;
 
   const float rotRate =

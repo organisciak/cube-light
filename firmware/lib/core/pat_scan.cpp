@@ -41,7 +41,7 @@ void render(PatternCtx& ctx) {
   const float levelGain = p.num("levelGain", 1.0f);
   const char* paletteName = p.str("palette", "arctic");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   const float prev = s_pos;
   s_pos += s_dir * speed * (1.0f + ctx.audio->level * levelGain) * dt;

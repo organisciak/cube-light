@@ -78,6 +78,28 @@ patterns by `scripts/gen-param-specs.mts`, but the TS side is deprecated and
 that generator is **retired**: do not re-run it, as it would clobber
 firmware-only params (e.g. the spiral `cycle` axis).
 
+Two shared blocks get spliced into pattern spec arrays instead of being
+retyped, so the same knob means the same thing everywhere:
+
+- `CUBE_THROB_SPECS(defaultDepth)` — the beat-driven brightness throb
+  (`cube_throb.h`): `throbDepth` / `throbAttack` / `throbRelease`.
+- `CUBE_PALETTE_SOLO_SPECS` — single-color palette mode (`cube_palettes.h`):
+  `paletteSolo` / `soloSpeed`. On every pattern that has a `palette` param.
+
+### Single-color ("solo") palettes
+
+With `paletteSolo` on, a palette stops being a spatial gradient and becomes a
+journey: the whole pattern takes **one** palette color per frame and drifts
+through the palette at `soloSpeed` passes/second. Picking `rainbow` walks the
+cube through the colors of the rainbow one at a time; `fire` walks red →
+orange → yellow → white and back.
+
+It lives in the palette layer — `resolvePalette(name, params, now)` bakes the
+drifting position into the `PaletteRef` and `samplePalette()` ignores the
+per-voxel `t` — so every palette-bearing pattern gets it for free. Sampled
+colors are renormalized to full value in this mode, since most gradients ramp
+out of black and a solo sweep through that end would just dim the cube.
+
 ## Snipped-LED compensation
 
 Burnt-out LEDs get physically cut off a chain; without compensation, a snip at

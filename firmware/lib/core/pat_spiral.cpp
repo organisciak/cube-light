@@ -76,7 +76,7 @@ void render(PatternCtx& ctx) {
   const bool colorByLayer = p.str("colorBy", "position")[0] == 'l';
   const char* paletteName = p.str("palette", "cyberpunk");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   // Beat-synced brightness throb (shared module; same knobs as snake/text).
   const float throb = s_throb.update(ctx);

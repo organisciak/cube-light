@@ -54,7 +54,7 @@ void render(PatternCtx& ctx) {
   const float beatThreshold = p.num("beatThreshold", 0.25f);
   const char* paletteName = p.str("palette", "none");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   // Beat envelope above the threshold maps to a smooth speed boost that
   // decays back as the envelope falls.

@@ -24,12 +24,13 @@ struct AudioThrob {
   void reset() { env = 0; }
 
   /**
-   * Advance the smoothed envelope and return a brightness multiplier in
-   * [1-depth .. 1]. Call once per frame with the pattern's dt.
+   * Advance the smoothed envelope and return it (0..1). Patterns that drive
+   * something other than brightness — orbit's particle size, say — call this
+   * directly; update() layers the brightness mapping on top. Runs even when
+   * throb depth is 0 so the envelope is already warm if it's dialed up.
    */
-  float update(const AudioFrame& audio, float dt, float depth, float attackS,
-               float releaseS) {
-    if (depth <= 0) return 1.0f;
+  float advance(const AudioFrame& audio, float dt, float attackS,
+                float releaseS) {
     const float target = audio.beat;
     const float tau = target > env ? attackS : releaseS;
     if (tau <= 0.005f) {
@@ -39,6 +40,17 @@ struct AudioThrob {
     }
     if (env < 0) env = 0;
     if (env > 1) env = 1;
+    return env;
+  }
+
+  /**
+   * Advance the envelope and return a brightness multiplier in
+   * [1-depth .. 1]. Call once per frame with the pattern's dt.
+   */
+  float update(const AudioFrame& audio, float dt, float depth, float attackS,
+               float releaseS) {
+    advance(audio, dt, attackS, releaseS);
+    if (depth <= 0) return 1.0f;
     return 1.0f - depth * (1.0f - env);
   }
 

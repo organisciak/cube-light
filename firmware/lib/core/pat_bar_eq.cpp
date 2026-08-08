@@ -40,7 +40,7 @@ void render(PatternCtx& ctx) {
   const char colorBy2 = p.str("colorBy", "bar")[2];  // disambiguate bar/band
   const char* paletteName = p.str("palette", "spectrum");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   const float beat = audio.beat;
 

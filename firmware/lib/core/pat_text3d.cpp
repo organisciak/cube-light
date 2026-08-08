@@ -99,7 +99,7 @@ void render(PatternCtx& ctx) {
   c.cb = p.num("b", 200.0f);
   const char* paletteName = p.str("palette", "none");
   c.useP = paletteActive(paletteName);
-  c.pal = resolvePalette(paletteName);
+  c.pal = resolvePalette(paletteName, p, ctx.t);
 
   const float level = clamp01(audio.level);
   const float beat = audio.beat;

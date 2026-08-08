@@ -61,6 +61,13 @@ constexpr int kCycleCount = 7;
 constexpr float kCyclePeriodS = 8.0f;
 constexpr float kCycleFadeS = 1.5f;
 
+// Solo mode walks the palette instead of spreading it. Gradients ramp out of
+// black at their low end, so the sweep starts above it and the sampled color
+// is renormalized to full value — otherwise "fire solo" would read as the
+// whole cube fading to black twice per pass rather than changing color.
+constexpr float kSoloFloor = 0.12f;
+constexpr int kSoloMinChannel = 8;  // below this, nothing to normalize
+
 void sampleGradient(const PaletteStop* stops, int count, float t, uint8_t out[3]) {
   const float tt = clamp01(t);
   for (int i = 1; i < count; i++) {
@@ -113,7 +120,24 @@ PaletteRef resolvePalette(const char* name) {
   return {PaletteKind::Rainbow, nullptr, 0};  // TS getPalette() fallback
 }
 
-void samplePalette(const PaletteRef& ref, float t, float now, uint8_t out[3]) {
+PaletteRef resolvePalette(const char* name, const Params& params, float now) {
+  PaletteRef ref = resolvePalette(name);
+  if (!params.boolean("paletteSolo", false)) return ref;
+  float phase = now * params.num("soloSpeed", 0.05f);
+  phase -= std::floor(phase);
+  ref.solo = true;
+  // Rainbow is a ring, so a sawtooth wraps seamlessly. Gradients have two
+  // distinct ends; a triangle sweep walks up and back instead of snapping.
+  ref.soloT = ref.kind == PaletteKind::Rainbow
+                  ? phase
+                  : kSoloFloor + (1.0f - kSoloFloor) *
+                                     (1.0f - std::fabs(2.0f * phase - 1.0f));
+  return ref;
+}
+
+namespace {
+
+void sampleAt(const PaletteRef& ref, float t, float now, uint8_t out[3]) {
   switch (ref.kind) {
     case PaletteKind::Gradient:
       sampleGradient(ref.stops, ref.stopCount, t, out);
@@ -139,6 +163,23 @@ void samplePalette(const PaletteRef& ref, float t, float now, uint8_t out[3]) {
       return;
     }
   }
+}
+
+}  // namespace
+
+void samplePalette(const PaletteRef& ref, float t, float now, uint8_t out[3]) {
+  if (!ref.solo) {
+    sampleAt(ref, t, now, out);
+    return;
+  }
+  sampleAt(ref, ref.soloT, now, out);
+  int mx = out[0] > out[1] ? out[0] : out[1];
+  if (out[2] > mx) mx = out[2];
+  if (mx < kSoloMinChannel) return;  // essentially black; nothing to scale
+  const float k = 255.0f / mx;
+  out[0] = (uint8_t)std::lround(out[0] * k);
+  out[1] = (uint8_t)std::lround(out[1] * k);
+  out[2] = (uint8_t)std::lround(out[2] * k);
 }
 
 }  // namespace cube

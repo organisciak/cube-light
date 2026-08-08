@@ -214,9 +214,9 @@ const T={NUM:0,BOOL:1,ENUM:2,PAL:3,STR:4};
 // JS heuristic — the C++ ParamSpec struct is untouched.
 function paramGroup(sp){
   const k=sp.key;
-  if(sp.type===T.PAL||sp.type===5||k==='r'||k==='g'||k==='b'||k==='sat'||k==='pos'||k==='palette'||/[RGB]$/.test(k)||/[Cc]olor|Tint|hue/.test(k))return 'Color';
+  if(sp.type===T.PAL||sp.type===5||k==='r'||k==='g'||k==='b'||k==='sat'||k==='pos'||k==='palette'||/^palette|^solo/.test(k)||/[RGB]$/.test(k)||/[Cc]olor|Tint|hue/.test(k))return 'Color';
   if(k==='gray'||k==='grayFlicker')return 'Pattern';  // tv-static background style
-  if(/Gain|[Bb]eat|[Ll]evel|[Aa]udio|mic|attack|release|gamma|throb|speedFrom|bpm/.test(k))return 'Audio';
+  if(/Gain|[Bb]eat|[Ll]evel|[Aa]udio|mic|attack|release|gamma|throb|speedFrom|countFrom|countMax|bpm/.test(k))return 'Audio';
   return 'Pattern';
 }
 function makeRow(sp,d,group){

@@ -54,7 +54,7 @@ void render(PatternCtx& ctx) {
   const float speedGain = p.num("speedGain", 1.5f);
   const char* paletteName = p.str("palette", "arctic");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   // Decay every voxel — gives the falling trail.
   for (int i = 0; i < NUM_LEDS * 3; i++) buffer[i] = (uint8_t)(buffer[i] * trail);

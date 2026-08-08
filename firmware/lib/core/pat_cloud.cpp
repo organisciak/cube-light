@@ -83,7 +83,7 @@ void render(PatternCtx& ctx) {
   const float flash = clamp01(p.num("flash", 0.35f));
   const char* paletteName = p.str("palette", "none");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   // Beat rising edge: spin kick + bolt request. Idle timer keeps occasional
   // strikes coming when there's no music to react to.

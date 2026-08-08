@@ -35,7 +35,7 @@ void render(PatternCtx& ctx) {
   const float beatBoost = clamp01(p.num("beatBoost", 0.25f));
   const char* paletteName = p.str("palette", "spectrum");
   const bool useP = paletteActive(paletteName);
-  const PaletteRef pal = resolvePalette(paletteName);
+  const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
 
   const float center = (N - 1) / 2.0f;
   const float cornerR = std::sqrt(center * center * 2.0f);

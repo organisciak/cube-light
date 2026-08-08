@@ -36,6 +36,19 @@ struct ParamSpec {
   {"throbRelease", "Throb release (s)", 0, 0.05f, 2.0f, 0.05f, 0.5f, "", "",  \
    "Seconds to sink back down after a beat. Longer = smoother, less twitchy."},
 
+// Shared single-color ("solo") palette block (cube_palettes.h): splice into
+// every pattern that has a "palette" param. Off = the palette spreads across
+// the pattern as usual; on = the whole pattern is one palette color at a time,
+// drifting through the palette.
+#define CUBE_PALETTE_SOLO_SPECS                                               \
+  {"paletteSolo", "Single color (drift)", 1, 0.0f, 0.0f, 0.0f, 0.0f, "", "",  \
+   "One palette color at a time for the whole pattern, drifting through the "  \
+   "palette instead of spreading it across the cube."},                        \
+  {"soloSpeed", "Drift speed (passes/s)", 0, 0.005f, 0.5f, 0.005f, 0.05f, "", \
+   "",                                                                         \
+   "How fast the single color travels through the palette. 0.05 = one pass "   \
+   "every 20s. Needs single-color mode on."},
+
 static const ParamSpec kSpecs_wavy_sheet[] = {
     {"axis", "Wave-height axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "z", "x,y,z",
      "Which cube axis the sheet's height runs along."},
@@ -73,6 +86,7 @@ static const ParamSpec kSpecs_wavy_sheet[] = {
      "Beats kick the spin (needs audio-reactive rotation on)."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
      "Color source; \"none\" uses the RGB sliders."},
+    CUBE_PALETTE_SOLO_SPECS
     {"r", "R (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 220.0f, "", "",
      "Sheet red channel when palette is \"none\"."},
     {"g", "G (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 220.0f, "", "",
@@ -91,6 +105,7 @@ static const ParamSpec kSpecs_rain[] = {
      "How much of each drop lingers per frame — higher = longer streaks."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "arctic", "",
      "Drop colors; \"none\" uses the hue slider below."},
+    CUBE_PALETTE_SOLO_SPECS
     {"pos", "Palette pos / hue", 0, 0.0f, 1.0f, 0.01f, 0.6f, "", "",
      "Where in the palette (or hue circle) drops sample their color."},
     {"jitter", "Position jitter", 0, 0.0f, 0.5f, 0.01f, 0.06f, "", "",
@@ -115,6 +130,7 @@ static const ParamSpec kSpecs_rotating_planes[] = {
      "Number of planes spinning at once."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
      "Per-plane colors; \"none\" uses the RGB sliders."},
+    CUBE_PALETTE_SOLO_SPECS
     {"r", "R (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 80.0f, "", "",
      "Plane red channel when palette is \"none\"."},
     {"g", "G (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 200.0f, "", "",
@@ -149,6 +165,7 @@ static const ParamSpec kSpecs_audio_ripple[] = {
      "A sudden loudness jump this big also fires a ring; 0 disables."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "spectrum", "",
      "Ring colors; the band mix (bass vs treble) picks the position."},
+    CUBE_PALETTE_SOLO_SPECS
     {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.05f, 0.85f, "", "",
      "Color saturation when no palette is active."},
 };
@@ -169,6 +186,7 @@ static const ParamSpec kSpecs_spectrum_discs[] = {
      "Seconds for a disc to fall back down."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "spectrum", "",
      "Disc colors, mapped along the stack."},
+    CUBE_PALETTE_SOLO_SPECS
     {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.05f, 0.85f, "", "",
      "Color saturation when no palette is active."},
     {"floor", "Brightness floor", 0, 0.0f, 1.0f, 0.02f, 0.1f, "", "",
@@ -193,6 +211,7 @@ static const ParamSpec kSpecs_bar_eq[] = {
      "\"bottom\" = classic columns; \"center\" = bars grow outward from the middle, mirrored."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "spectrum", "",
      "Bar colors; \"none\" = classic green-to-red EQ."},
+    CUBE_PALETTE_SOLO_SPECS
     {"colorBy", "Color by", 2, 0.0f, 0.0f, 0.0f, 0.0f, "bar", "bar,height,band",
      "What picks a voxel's color: its bar, its height, or its frequency band."},
     {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.05f, 0.9f, "", "",
@@ -211,6 +230,7 @@ static const ParamSpec kSpecs_spiral[] = {
      "Brightness of the oldest drawn cells relative to the head."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "cyberpunk", "",
      "Spiral colors."},
+    CUBE_PALETTE_SOLO_SPECS
     {"colorBy", "Color by", 2, 0.0f, 0.0f, 0.0f, 0.0f, "position", "position,layer",
      "Color along the spiral's path, or one color per layer."},
     {"levelGain", "Level → speed", 0, 0.0f, 4.0f, 0.1f, 1.0f, "", "",
@@ -232,6 +252,7 @@ static const ParamSpec kSpecs_spin_cube[] = {
      "Beats kick the tumble speed."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
      "Edge colors; \"none\" uses the RGB sliders."},
+    CUBE_PALETTE_SOLO_SPECS
     {"r", "R (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 240.0f, "", "",
      "Edge red channel when palette is \"none\"."},
     {"g", "G (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 240.0f, "", "",
@@ -256,6 +277,7 @@ static const ParamSpec kSpecs_bounce[] = {
      "Beats puff the ball up briefly."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "ocean", "",
      "Shell colors; \"none\" uses the RGB sliders."},
+    CUBE_PALETTE_SOLO_SPECS
     {"r", "R (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 120.0f, "", "",
      "Shell red channel when palette is \"none\"."},
     {"g", "G (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 220.0f, "", "",
@@ -264,8 +286,16 @@ static const ParamSpec kSpecs_bounce[] = {
      "Shell blue channel when palette is \"none\"."},
 };
 static const ParamSpec kSpecs_orbit[] = {
-    {"count", "Particle count", 0, 1.0f, 6.0f, 1.0f, 4.0f, "", "",
-     "Number of orbiting particles."},
+    {"count", "Particle count (quiet)", 0, 1.0f, 8.0f, 1.0f, 4.0f, "", "",
+     "Orbiting particles when the music isn't adding any."},
+    {"countFrom", "Extra orbs from", 2, 0.0f, 0.0f, 0.0f, 0.0f, "none",
+     "none,level,beat,bpm",
+     "What spawns extra orbs: loudness, each beat, or the detected tempo. "
+     "They fade in and out rather than popping."},
+    {"countMax", "Particle count (loud)", 0, 1.0f, 8.0f, 1.0f, 8.0f, "", "",
+     "Ceiling the extra orbs climb to. Needs a source above."},
+    {"countGain", "Extra-orb sensitivity", 0, 0.0f, 4.0f, 0.1f, 1.5f, "", "",
+     "How readily the source reaches the loud count. Higher = fewer quiet moments."},
     {"radius", "Orbit radius (voxels)", 0, 1.5f, 4.5f, 0.1f, 3.4f, "", "",
      "Distance of the orbits from the cube's center."},
     {"speed", "Orbit speed (rev/s)", 0, 0.05f, 2.0f, 0.05f, 0.4f, "", "",
@@ -278,8 +308,14 @@ static const ParamSpec kSpecs_orbit[] = {
      "Beats kick the orbit speed."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "spectrum", "",
      "Particle colors."},
+    CUBE_PALETTE_SOLO_SPECS
     {"headBright", "Head brightness", 0, 0.3f, 1.0f, 0.05f, 1.0f, "", "",
      "Brightness of each particle's head relative to its trail."},
+    {"size", "Particle size (voxels)", 0, 0.5f, 3.0f, 0.1f, 0.5f, "", "",
+     "Radius of each orb. 0.5 = a single point; trails taper as they fade."},
+    {"beatSize", "Beat → size pulse", 0, 0.0f, 2.0f, 0.1f, 0.5f, "", "",
+     "How far beats swell the orbs. 0 = fixed size."},
+    CUBE_THROB_SPECS(0.0f)
 };
 static const ParamSpec kSpecs_scan[] = {
     {"axis", "Sweep axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "z", "z,y,x",
@@ -292,6 +328,7 @@ static const ParamSpec kSpecs_scan[] = {
      "Light only grid lines instead of the full slice."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "arctic", "",
      "Slice colors."},
+    CUBE_PALETTE_SOLO_SPECS
     {"colorBySlice", "Color follows slice", 1, 0.0f, 0.0f, 0.0f, 1.0f, "", "",
      "Color shifts with the slice position instead of staying fixed."},
     {"sat", "Saturation (HSV mode)", 0, 0.0f, 1.0f, 0.05f, 0.85f, "", "",
@@ -312,6 +349,7 @@ static const ParamSpec kSpecs_cloud[] = {
      "Pulls the mass up to hang from the cube's ceiling, clear air below."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
      "Cloud colors; \"none\" uses the RGB sliders with storm shading."},
+    CUBE_PALETTE_SOLO_SPECS
     {"r", "R (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 220.0f, "", "",
      "Cloud red channel when palette is \"none\"."},
     {"g", "G (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 235.0f, "", "",
@@ -350,6 +388,7 @@ static const ParamSpec kSpecs_comet[] = {
      "Head blue channel."},
     {"palette", "Tail palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
      "Tail colors; \"none\" fades the head color."},
+    CUBE_PALETTE_SOLO_SPECS
     {"beatGain", "Beat → speed boost", 0, 0.0f, 8.0f, 0.1f, 2.5f, "", "",
      "Beats boost the comet's speed."},
     {"beatThreshold", "Beat trigger threshold", 0, 0.0f, 1.0f, 0.05f, 0.25f, "", "",
@@ -387,6 +426,7 @@ static const ParamSpec kSpecs_text_3d[] = {
      "Ring mode: glyph columns clipped on the right so faces don't overlap."},
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
      "Character colors; \"none\" uses the RGB sliders."},
+    CUBE_PALETTE_SOLO_SPECS
     {"r", "R (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", "",
      "Text red channel when palette is \"none\"."},
     {"g", "G (RGB mode)", 0, 0.0f, 255.0f, 1.0f, 240.0f, "", "",
@@ -424,6 +464,7 @@ static const ParamSpec kSpecs_tv_static[] = {
     {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
      "Glitch colors (each picks a random position); \"none\" = classic white "
      "flash with pure R/G/B arms."},
+    CUBE_PALETTE_SOLO_SPECS
     {"gray", "Background gray", 0, 0.0f, 80.0f, 1.0f, 0.0f, "", "",
      "0 = pure black; higher = faint gray dead-channel static behind the glitches."},
     {"grayFlicker", "Background flicker", 0, 0.0f, 1.0f, 0.05f, 0.5f, "", "",
@@ -444,6 +485,7 @@ static const ParamSpec kSpecs_wander[] = {
      "Fading trail behind the pixel; 0 = lone dot."},
     {"palette", "Tail palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
      "Tail colors; \"none\" fades the RGB color below."},
+    CUBE_PALETTE_SOLO_SPECS
     {"r", "R", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", "",
      "Pixel red channel."},
     {"g", "G", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", "",
@@ -469,6 +511,7 @@ static const ParamSpec kSpecs_snake_3d[] = {
     CUBE_THROB_SPECS(0.0f)
     {"palette", "Tail palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "spectrum", "",
      "Body colors head-to-tail."},
+    CUBE_PALETTE_SOLO_SPECS
     {"appleR", "Apple R", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", "",
      "Apple red channel."},
     {"appleG", "Apple G", 0, 0.0f, 255.0f, 1.0f, 40.0f, "", "",
@@ -495,6 +538,7 @@ static const ParamSpec kSpecs_pacman_3d[] = {
      "Length of Pac-Man's rainbow wake."},
     {"palette", "Tail palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "rainbow", "",
      "Wake colors."},
+    CUBE_PALETTE_SOLO_SPECS
     {"pelletBrightness", "Pellet brightness", 0, 0.0f, 1.0f, 0.01f, 0.06f, "", "",
      "Brightness of the uneaten pellet field."},
     {"pelletColor", "Pellet hue (0=warm, 1=cool)", 0, 0.0f, 1.0f, 0.01f, 0.13f, "", "",
@@ -513,6 +557,7 @@ static const ParamSpec kSpecs_pacman_3d[] = {
 static const ParamSpec kSpecs_fireworks[] = {
     {"palette", "Burst palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "cyberpunk", "",
      "Colors the bursts draw from."},
+    CUBE_PALETTE_SOLO_SPECS
     {"launchInterval", "Seconds between rockets", 0, 0.3f, 6.0f, 0.1f, 1.6f, "", "",
      "Timer-based launch cadence."},
     {"flightTime", "Rocket flight (s)", 0, 0.2f, 2.0f, 0.05f, 0.7f, "", "",

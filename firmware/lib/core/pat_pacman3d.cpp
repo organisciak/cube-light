@@ -275,7 +275,7 @@ void render(PatternCtx& ctx) {
   const float ghostSpeed = p.num("ghostSpeed", 3.0f);
   const int ghostCount = (int)std::fmax(0.0f, std::fmin(4.0f, std::floor(p.num("ghostCount", 4.0f))));
   const int tailLen = std::min(kMaxTail, (int)std::fmax(0.0f, std::floor(p.num("tailLength", 14.0f))));
-  const PaletteRef pal = resolvePalette(p.str("palette", "rainbow"));
+  const PaletteRef pal = resolvePalette(p.str("palette", "rainbow"), p, ctx.t);
   const float pelletB = clamp01(p.num("pelletBrightness", 0.06f));
   const float pelletHue = clamp01(p.num("pelletColor", 0.13f));
   const float beatSpeedGain = p.num("beatSpeedGain", 1.5f);
