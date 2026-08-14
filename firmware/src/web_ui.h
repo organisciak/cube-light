@@ -72,6 +72,9 @@ break anything permanent — just reset when you're done.</div>
 <div id="liveBanner" style="display:none;background:#5a3a10;border:1px solid #a06820;color:#f0c070;border-radius:6px;padding:10px;font-size:13px;margin-bottom:12px">
 ⚠ An external stream (dev server?) is driving the cube right now — the
 pattern below won't show until it stops.</div>
+<label>Power</label>
+<button id="powerToggle" style="width:100%;padding:10px;font-size:15px"></button>
+
 <label>Pattern</label>
 <select id="pattern"></select>
 <a id="gameLink" href="/snake" style="display:none;background:#2a8050;color:#fff;text-align:center;text-decoration:none;border-radius:8px;padding:14px;font-size:16px;margin-top:10px">🎮 Grab the game pad →</a>
@@ -153,6 +156,7 @@ function applyStatus(s){
   if(document.activeElement!==sel)sel.value=s.pattern;
   gameLink(s.pattern);
   micOn=s.micOn; drawMic();
+  powerOn=!!s.power; drawPower();
   isGuest=!!s.guest;
   $('advTogWrap').style.display=isGuest?'none':'flex';  // modulation is owner-only
   $('liveBanner').style.display=s.live?'block':'none';
@@ -205,6 +209,14 @@ function drawMic(){
   b.style.color=micOn?'#fff':'#999';
 }
 $('micToggle').onclick=async()=>{micOn=!micOn;drawMic();await post('/api/mic?on='+(micOn?1:0))};
+let powerOn=true;
+function drawPower(){
+  const b=$('powerToggle');
+  b.textContent=powerOn?'⏻ ON — tap for soft-off':'⏻ OFF — cube dark, tap to wake';
+  b.style.background=powerOn?'#2a5aa5':'#26262e';
+  b.style.color=powerOn?'#fff':'#999';
+}
+$('powerToggle').onclick=async()=>{powerOn=!powerOn;drawPower();await post('/api/power?on='+(powerOn?1:0))};
 {let lastB=0;
 $('bright').oninput=e=>{$('brightv').textContent=e.target.value+'%';
   const now=Date.now();if(now-lastB>=150){lastB=now;post('/api/brightness?v='+(e.target.value/100))}};

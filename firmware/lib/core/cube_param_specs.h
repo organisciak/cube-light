@@ -481,6 +481,10 @@ static const ParamSpec kSpecs_wander[] = {
      "Odds of turning a corner at each voxel — higher = jitterier path."},
     {"beatTurn", "Turn on beat", 1, 0.0f, 0.0f, 0.0f, 1.0f, "", "",
      "Every beat makes the pixel turn a corner."},
+    {"beatAberration", "Beat → RGB misprint", 0, 0.0f, 4.0f, 0.25f, 1.5f, "", "",
+     "Beats split the R and B channels this many voxels off to the sides, "
+     "like a mis-registered comic print; the fringes snap out on the beat "
+     "and pull back in as it fades. 0 = off."},
     {"tail", "Tail length", 0, 0.0f, 24.0f, 1.0f, 4.0f, "", "",
      "Fading trail behind the pixel; 0 = lone dot."},
     {"palette", "Tail palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
@@ -630,6 +634,75 @@ static const ParamSpec kSpecs_build_map[] = {
      "Middle-marker blue channel."},
 };
 
+static const ParamSpec kSpecs_rail_grind[] = {
+    {"speed", "Ride speed (voxels/s)", 0, 1.0f, 30.0f, 0.5f, 8.0f, "", "",
+     "How fast you travel along the rail."},
+    {"speedFrom", "Speed boost source", 2, 0.0f, 0.0f, 0.0f, 0.0f, "none", "none,level,bpm",
+     "What drives the speed boost: loudness, or the detected tempo."},
+    {"speedGain", "Speed boost gain", 0, 0.0f, 4.0f, 0.1f, 1.5f, "", "",
+     "Strength of the speed boost (with the source above)."},
+    {"curviness", "Curviness (voxels)", 0, 0.0f, 8.0f, 0.25f, 4.0f, "", "",
+     "How far the rail swings side to side."},
+    {"turnLen", "Turn length (voxels)", 0, 4.0f, 40.0f, 1.0f, 14.0f, "", "",
+     "Distance a typical bend takes — short = twisty, long = sweeping."},
+    {"vertAmount", "Vertical dips (voxels)", 0, 0.0f, 6.0f, 0.25f, 2.0f, "", "",
+     "How much the rail rises and dips. 0 = flat ride."},
+    {"camLag", "Camera lag (s)", 0, 0.0f, 1.5f, 0.05f, 0.4f, "", "",
+     "How long the camera takes to turn into a curve. More lag = oncoming "
+     "turns swing wider across the view before you carve through them."},
+    {"jagGain", "Loudness → jaggedness", 0, 0.0f, 3.0f, 0.1f, 1.0f, "", "",
+     "Louder music makes the oncoming rail swing harder."},
+    {"beatKink", "Beat → swerve (voxels)", 0, 0.0f, 8.0f, 0.25f, 3.0f, "", "",
+     "Each beat drops a sudden jog into the rail ahead; watch it ride in, "
+     "then lurch through it. 0 = off."},
+    {"depthStep", "Lookahead per layer", 0, 0.5f, 4.0f, 0.25f, 1.5f, "", "",
+     "Voxels of rail packed into each depth layer — higher shows more track "
+     "(and more turns) at once."},
+    {"fade", "Depth fade", 0, 0.4f, 1.0f, 0.02f, 0.8f, "", "",
+     "Brightness falloff per layer of distance. 1 = far rail as bright as near."},
+    {"glow", "Rail glow", 0, 0.0f, 1.0f, 0.05f, 0.25f, "", "",
+     "Sideways glow around the rail line. 0 = thin single-voxel line."},
+    {"palette", "Rail palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "none", "",
+     "Colors along the rail's depth; \"none\" = the RGB color below."},
+    CUBE_PALETTE_SOLO_SPECS
+    {"r", "R", 0, 0.0f, 255.0f, 1.0f, 80.0f, "", "",
+     "Rail red channel."},
+    {"g", "G", 0, 0.0f, 255.0f, 1.0f, 220.0f, "", "",
+     "Rail green channel."},
+    {"b", "B", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", "",
+     "Rail blue channel."},
+};
+static const ParamSpec kSpecs_rez_tunnel[] = {
+    {"speed", "Fly speed (layers/s)", 0, 1.0f, 30.0f, 0.5f, 6.0f, "", "",
+     "Base forward speed through the tunnel."},
+    {"speedFrom", "Speed boost source", 2, 0.0f, 0.0f, 0.0f, 0.0f, "level", "none,level,bpm",
+     "What drives the speed boost: loudness, or the detected tempo."},
+    {"speedGain", "Speed boost gain", 0, 0.0f, 4.0f, 0.1f, 1.5f, "", "",
+     "Strength of the speed boost (with the source above)."},
+    {"beatKick", "Beat → speed surge", 0, 0.0f, 4.0f, 0.1f, 1.2f, "", "",
+     "Each beat momentarily rushes everything toward you."},
+    {"beatSpawn", "Shapes per beat", 0, 0.0f, 4.0f, 1.0f, 1.0f, "", "",
+     "Wireframe shapes launched from the horizon on each beat. 0 = sparks only."},
+    {"shape", "Shape", 2, 0.0f, 0.0f, 0.0f, 0.0f, "mixed", "ring,square,cross,mixed",
+     "What flies at you on beats; mixed picks at random."},
+    {"shapeSize", "Shape size (voxels)", 0, 2.0f, 7.0f, 0.25f, 4.5f, "", "",
+     "Radius the shapes reach as they arrive at the near face."},
+    {"ambientRate", "Ambient sparks/s", 0, 0.0f, 20.0f, 0.5f, 4.0f, "", "",
+     "Background starfield streaming past, music or not."},
+    {"streak", "Motion streak", 0, 0.0f, 1.0f, 0.05f, 0.4f, "", "",
+     "Trailing smear behind each point, hinting at speed. 0 = clean dots."},
+    {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "rainbow", "",
+     "Each shape and spark picks one random color from here; \"none\" = the "
+     "RGB color below."},
+    CUBE_PALETTE_SOLO_SPECS
+    {"r", "R", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", "",
+     "Point red channel (palette \"none\")."},
+    {"g", "G", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", "",
+     "Point green channel (palette \"none\")."},
+    {"b", "B", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", "",
+     "Point blue channel (palette \"none\")."},
+};
+
 struct PatternSpecs {
   const char* id;
   const ParamSpec* specs;
@@ -651,6 +724,8 @@ static const PatternSpecs kPatternSpecs[] = {
     {"bounce", kSpecs_bounce, SPEC_N(kSpecs_bounce)},
     {"orbit", kSpecs_orbit, SPEC_N(kSpecs_orbit)},
     {"scan", kSpecs_scan, SPEC_N(kSpecs_scan)},
+    {"rail-grind", kSpecs_rail_grind, SPEC_N(kSpecs_rail_grind)},
+    {"rez-tunnel", kSpecs_rez_tunnel, SPEC_N(kSpecs_rez_tunnel)},
     {"cloud", kSpecs_cloud, SPEC_N(kSpecs_cloud)},
     {"comet", kSpecs_comet, SPEC_N(kSpecs_comet)},
     {"text-3d", kSpecs_text_3d, SPEC_N(kSpecs_text_3d)},
