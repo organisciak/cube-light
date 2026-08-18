@@ -1,5 +1,6 @@
 // Rez tunnel (firmware-original) — flying forward through a synesthetic
-// tunnel, the cube as your viewport: depth runs along +y. Each beat launches
+// tunnel, the cube as your viewport: depth runs along the chosen axis
+// (default +y, or a slow "spin" pan). Each beat launches
 // a wireframe shape (ring / square / X) from the far horizon that grows in
 // perspective as it flies past; ambient sparks stream by continuously, and
 // the forward speed surges with the music. Silence = a sparse drifting
@@ -105,6 +106,37 @@ inline void splatMax(PatternCtx& ctx, uint8_t* buf, int x, int y, int z,
   if (bb > px[2]) px[2] = bb;
 }
 
+// Orthonormal view frame: which cube direction the tunnel runs along.
+// "spin" rotates the frame around the design vertical over time, so the
+// tunnel mouth slowly wheels around the cube.
+struct Basis {
+  float fx, fy, fz;  // forward (depth)
+  float rx, ry, rz;  // right (lateral)
+  float ux, uy, uz;  // up (vertical)
+};
+
+Basis viewBasis(const char* axis, float t, float spinDegPerSec) {
+  if (axis[0] == 's') {
+    const float th = t * spinDegPerSec * 0.0174533f;
+    const float c = std::cos(th), s = std::sin(th);
+    return {c, s, 0, -s, c, 0, 0, 0, 1};
+  }
+  if (axis[0] == 'x') return {1, 0, 0, 0, 1, 0, 0, 0, 1};
+  if (axis[0] == 'z') return {0, 0, 1, 1, 0, 0, 0, 1, 0};
+  return {0, 1, 0, 1, 0, 0, 0, 0, 1};  // y — the original viewport
+}
+
+// Splat a view-space point (depth u ahead, l right of center, v above
+// center) through the basis into cube voxels; depth spans the cube center.
+inline void splatView(PatternCtx& ctx, uint8_t* buf, const Basis& B, float u,
+                      float l, float v, float r, float g, float b) {
+  const float du = u - 4.5f;
+  const int x = (int)std::lround(4.5f + B.fx * du + B.rx * l + B.ux * v);
+  const int y = (int)std::lround(4.5f + B.fy * du + B.ry * l + B.uy * v);
+  const int z = (int)std::lround(4.5f + B.fz * du + B.rz * l + B.uz * v);
+  splatMax(ctx, buf, x, y, z, r, g, b);
+}
+
 void render(PatternCtx& ctx) {
   const Params& p = *ctx.params;
   const AudioFrame& audio = *ctx.audio;
@@ -125,6 +157,7 @@ void render(PatternCtx& ctx) {
   const char* paletteName = p.str("palette", "rainbow");
   const bool useP = paletteActive(paletteName);
   const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
+  const Basis B = viewBasis(p.str("axis", "y"), ctx.t, p.num("spinSpeed", 8.0f));
 
   // One color per spawned thing: a random palette position, or the RGB knobs.
   const auto pickColor = [&](uint8_t out[3], float dim) {
@@ -192,19 +225,18 @@ void render(PatternCtx& ctx) {
       continue;
     }
     const float d = std::fmax(0.0f, s_p[i].d);
+    if (d > (float)CUBE_N - 0.6f) continue;  // still beyond the far face
     const float proj = kPersp / (d + kPersp);
-    const int x = (int)std::lround(4.5f + s_p[i].wx * proj);
-    const int z = (int)std::lround(4.5f + s_p[i].wz * proj);
-    const int y = (int)std::lround(d);
-    if (y >= CUBE_N) continue;  // still beyond the far face
+    const float l = s_p[i].wx * proj;
+    const float v2 = s_p[i].wz * proj;
     // Fade in from the horizon, brighten on approach.
     const float bright = clamp01((kMaxDepth - s_p[i].d) / 4.0f) *
                          (0.45f + 0.55f * proj);
-    splatMax(ctx, buffer, x, y, z, s_p[i].r * bright, s_p[i].g * bright,
-             s_p[i].b * bright);
+    splatView(ctx, buffer, B, d, l, v2, s_p[i].r * bright, s_p[i].g * bright,
+              s_p[i].b * bright);
     if (streak > 0)
-      splatMax(ctx, buffer, x, y + 1, z, s_p[i].r * bright * streak,
-               s_p[i].g * bright * streak, s_p[i].b * bright * streak);
+      splatView(ctx, buffer, B, d + 1, l, v2, s_p[i].r * bright * streak,
+                s_p[i].g * bright * streak, s_p[i].b * bright * streak);
   }
 }
 

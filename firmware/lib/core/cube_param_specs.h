@@ -635,6 +635,11 @@ static const ParamSpec kSpecs_build_map[] = {
 };
 
 static const ParamSpec kSpecs_rail_grind[] = {
+    {"axis", "Travel axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "y", "y,x,z,spin",
+     "Cube axis the ride runs along; \"spin\" slowly wheels the whole view "
+     "around the vertical, like the camera panning as you ride."},
+    {"spinSpeed", "Spin speed (deg/s)", 0, 1.0f, 45.0f, 1.0f, 8.0f, "", "",
+     "How fast the view rotates in \"spin\" mode."},
     {"speed", "Ride speed (voxels/s)", 0, 1.0f, 30.0f, 0.5f, 8.0f, "", "",
      "How fast you travel along the rail."},
     {"speedFrom", "Speed boost source", 2, 0.0f, 0.0f, 0.0f, 0.0f, "none", "none,level,bpm",
@@ -673,6 +678,11 @@ static const ParamSpec kSpecs_rail_grind[] = {
      "Rail blue channel."},
 };
 static const ParamSpec kSpecs_rez_tunnel[] = {
+    {"axis", "Tunnel axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "y", "y,x,z,spin",
+     "Cube axis the tunnel runs along; \"spin\" slowly wheels the tunnel "
+     "mouth around the vertical."},
+    {"spinSpeed", "Spin speed (deg/s)", 0, 1.0f, 45.0f, 1.0f, 8.0f, "", "",
+     "How fast the view rotates in \"spin\" mode."},
     {"speed", "Fly speed (layers/s)", 0, 1.0f, 30.0f, 0.5f, 6.0f, "", "",
      "Base forward speed through the tunnel."},
     {"speedFrom", "Speed boost source", 2, 0.0f, 0.0f, 0.0f, 0.0f, "level", "none,level,bpm",

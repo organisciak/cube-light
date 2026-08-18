@@ -1,6 +1,7 @@
 // Rail grind (firmware-original) — first-person ride down a neon rail, the
-// cube as your viewport: depth runs along +y, the rail vanishes ahead in
-// perspective and always passes underfoot at the near face's center. The
+// cube as your viewport: depth runs along the chosen axis (default +y, or a
+// slow "spin" pan), the rail vanishes ahead in perspective and always passes
+// underfoot at the near face's center. The
 // rail is a procedural curve (drifting sines); the camera's heading chases
 // the local slope with adjustable lag, so upcoming turns swing across the
 // view and recenter as "you" carve into them. Loudness makes the oncoming
@@ -74,6 +75,37 @@ inline void splatMax(PatternCtx& ctx, uint8_t* buf, int x, int y, int z,
   if (bb > px[2]) px[2] = bb;
 }
 
+// Orthonormal view frame: which cube direction is "ahead", "right", "up".
+// "spin" rotates the whole frame around the design vertical over time — the
+// camera slowly pans while it rides.
+struct Basis {
+  float fx, fy, fz;  // forward (depth)
+  float rx, ry, rz;  // right (lateral)
+  float ux, uy, uz;  // up (vertical)
+};
+
+Basis viewBasis(const char* axis, float t, float spinDegPerSec) {
+  if (axis[0] == 's') {
+    const float th = t * spinDegPerSec * 0.0174533f;
+    const float c = std::cos(th), s = std::sin(th);
+    return {c, s, 0, -s, c, 0, 0, 0, 1};
+  }
+  if (axis[0] == 'x') return {1, 0, 0, 0, 1, 0, 0, 0, 1};
+  if (axis[0] == 'z') return {0, 0, 1, 1, 0, 0, 0, 1, 0};
+  return {0, 1, 0, 1, 0, 0, 0, 0, 1};  // y — the original viewport
+}
+
+// Splat a view-space point (depth u ahead, l right of center, v above
+// center) through the basis into cube voxels; depth spans the cube center.
+inline void splatView(PatternCtx& ctx, uint8_t* buf, const Basis& B, float u,
+                      float l, float v, float r, float g, float b) {
+  const float du = u - 4.5f;
+  const int x = (int)std::lround(4.5f + B.fx * du + B.rx * l + B.ux * v);
+  const int y = (int)std::lround(4.5f + B.fy * du + B.ry * l + B.uy * v);
+  const int z = (int)std::lround(4.5f + B.fz * du + B.rz * l + B.uz * v);
+  splatMax(ctx, buf, x, y, z, r, g, b);
+}
+
 void render(PatternCtx& ctx) {
   const Params& p = *ctx.params;
   const AudioFrame& audio = *ctx.audio;
@@ -97,6 +129,7 @@ void render(PatternCtx& ctx) {
   const char* paletteName = p.str("palette", "none");
   const bool useP = paletteActive(paletteName);
   const PaletteRef pal = resolvePalette(paletteName, p, ctx.t);
+  const Basis B = viewBasis(p.str("axis", "y"), ctx.t, p.num("spinSpeed", 8.0f));
 
   const float freq = 6.2831853f / turnLen;
   const float ampX = curviness * (1.0f + jagGain * audio.level);
@@ -155,9 +188,8 @@ void render(PatternCtx& ctx) {
                        s_hx * u * depthStep;
     const float relZ = railAt(s, ampZ, freq, s_ph + 2, s_baseZ, true) - camZ -
                        s_hz * u * depthStep;
-    const int x = (int)std::lround(4.5f + relX * proj);
-    const int z = (int)std::lround(4.5f + relZ * proj);
-    const int y = (int)std::lround(u);
+    const float l = relX * proj;
+    const float v = relZ * proj;
     float pr = cr, pg = cg, pb = cb;
     if (useP) {
       uint8_t rgb[3];
@@ -167,13 +199,13 @@ void render(PatternCtx& ctx) {
       pb = rgb[2];
     }
     const float fall = std::pow(fade, u);
-    splatMax(ctx, buffer, x, y, z, pr * fall, pg * fall, pb * fall);
+    splatView(ctx, buffer, B, u, l, v, pr * fall, pg * fall, pb * fall);
     if (glow > 0) {
       const float gf = fall * glow;
-      splatMax(ctx, buffer, x - 1, y, z, pr * gf, pg * gf, pb * gf);
-      splatMax(ctx, buffer, x + 1, y, z, pr * gf, pg * gf, pb * gf);
-      splatMax(ctx, buffer, x, y, z - 1, pr * gf, pg * gf, pb * gf);
-      splatMax(ctx, buffer, x, y, z + 1, pr * gf, pg * gf, pb * gf);
+      splatView(ctx, buffer, B, u, l - 1, v, pr * gf, pg * gf, pb * gf);
+      splatView(ctx, buffer, B, u, l + 1, v, pr * gf, pg * gf, pb * gf);
+      splatView(ctx, buffer, B, u, l, v - 1, pr * gf, pg * gf, pb * gf);
+      splatView(ctx, buffer, B, u, l, v + 1, pr * gf, pg * gf, pb * gf);
     }
   }
 }
