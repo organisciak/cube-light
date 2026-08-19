@@ -40,6 +40,12 @@ const PaletteStop kCyberpunk[] = {
     {0.0f, 10, 0, 30},    {0.2f, 120, 0, 140},  {0.4f, 255, 30, 160},
     {0.6f, 180, 60, 255}, {0.8f, 0, 220, 255},  {1.0f, 180, 255, 240},
 };
+// Fire's shape (dark tail -> near-white leading edge) in bi-flag colors:
+// deep indigo-blue through purple into hot pink, tipped pink-white.
+const PaletteStop kBiFire[] = {
+    {0.0f, 6, 2, 22},      {0.22f, 24, 12, 150},  {0.45f, 150, 45, 185},
+    {0.68f, 255, 25, 130}, {0.86f, 255, 115, 190}, {1.0f, 255, 235, 248},
+};
 
 struct NamedGradient {
   const char* name;
@@ -51,6 +57,7 @@ const NamedGradient kGradients[] = {
     {"fire", kFire, 6},         {"arctic", kArctic, 4},   {"sunset", kSunset, 5},
     {"forest", kForest, 4},     {"ocean", kOcean, 4},     {"mono_red", kMonoRed, 3},
     {"mono_blue", kMonoBlue, 3}, {"spectrum", kSpectrum, 5}, {"cyberpunk", kCyberpunk, 6},
+    {"bi_fire", kBiFire, 6},
 };
 constexpr int kGradientCount = sizeof(kGradients) / sizeof(kGradients[0]);
 
@@ -97,8 +104,9 @@ const NamedGradient* findGradient(const char* name) {
 }  // namespace
 
 const char* const kPaletteNames[] = {
-    "none",     "fire",     "arctic",   "sunset",    "forest", "ocean",
-    "mono_red", "mono_blue", "rainbow", "spectrum",  "cyberpunk", "cycle",
+    "none",     "fire",     "bi_fire",  "arctic",    "sunset", "forest",
+    "ocean",    "mono_red", "mono_blue", "rainbow",  "spectrum", "cyberpunk",
+    "cycle",
 };
 const int kPaletteNameCount = sizeof(kPaletteNames) / sizeof(kPaletteNames[0]);
 

@@ -44,6 +44,16 @@ export const palettes: Record<string, Palette> = {
     [0.85, [255, 240, 60]],
     [1.0, [255, 255, 220]],
   ]),
+  // Fire's shape (dark tail -> near-white leading edge) in bi-flag colors:
+  // deep indigo-blue through purple into hot pink, tipped pink-white.
+  bi_fire: gradient([
+    [0.0, [6, 2, 22]],
+    [0.22, [24, 12, 150]],
+    [0.45, [150, 45, 185]],
+    [0.68, [255, 25, 130]],
+    [0.86, [255, 115, 190]],
+    [1.0, [255, 235, 248]],
+  ]),
   arctic: gradient([
     [0.0, [4, 8, 22]],
     [0.4, [30, 80, 180]],
