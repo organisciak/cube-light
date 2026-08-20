@@ -185,12 +185,14 @@ async function refresh(){
   let s;try{s=await (await fetch('/api/status')).json()}catch(e){setTimeout(refresh,2000);return}
   const sel=$('pattern');
   if(sel.options.length===0){
-    // Split the dropdown: display patterns vs calibration/diagnostic tools.
+    // Split the dropdown: display patterns vs games vs calibration tools.
     const UTIL=new Set(['snake-cal','index-walk','lit-pixel','build-map']);
+    const GAMES=new Set(['snake-3d','pacman-3d']);
     const gLight=document.createElement('optgroup');gLight.label='Light patterns';
+    const gGame=document.createElement('optgroup');gGame.label='Games';
     const gTool=document.createElement('optgroup');gTool.label='Calibration & tools';
-    for(const p of s.patterns){const o=document.createElement('option');o.value=o.textContent=p;(UTIL.has(p)?gTool:gLight).appendChild(o)}
-    sel.appendChild(gLight);sel.appendChild(gTool);
+    for(const p of s.patterns){const o=document.createElement('option');o.value=o.textContent=p;(UTIL.has(p)?gTool:GAMES.has(p)?gGame:gLight).appendChild(o)}
+    sel.appendChild(gLight);sel.appendChild(gGame);sel.appendChild(gTool);
   }
   lastPat=s.pattern;
   applyStatus(s);

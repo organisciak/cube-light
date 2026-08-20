@@ -32,6 +32,7 @@ extern const Pattern kOrbit;
 extern const Pattern kScan;
 extern const Pattern kRailGrind;
 extern const Pattern kRezTunnel;
+extern const Pattern kDoubleHelix;
 
 const Pattern* const kPatterns[] = {
     &kWavySheet,
@@ -49,6 +50,7 @@ const Pattern* const kPatterns[] = {
     &kScan,
     &kRailGrind,
     &kRezTunnel,
+    &kDoubleHelix,
     &kTvStatic,
     &kWander,
     &kText3d,

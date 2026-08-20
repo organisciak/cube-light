@@ -713,6 +713,41 @@ static const ParamSpec kSpecs_rez_tunnel[] = {
      "Point blue channel (palette \"none\")."},
 };
 
+static const ParamSpec kSpecs_double_helix[] = {
+    {"axis", "Helix axis", 2, 0.0f, 0.0f, 0.0f, 0.0f, "z", "z,y,x",
+     "Cube axis the helix climbs along."},
+    {"radius", "Radius (voxels)", 0, 1.0f, 4.5f, 0.25f, 3.0f, "", "",
+     "How far the strands sit from the axis."},
+    {"turns", "Twists over height", 0, 0.25f, 3.0f, 0.25f, 1.2f, "", "",
+     "Full rotations each strand makes across the cube."},
+    {"speed", "Spin speed (rev/s)", 0, 0.0f, 2.0f, 0.05f, 0.25f, "", "",
+     "How fast the whole helix rotates."},
+    {"speedFrom", "Speed boost source", 2, 0.0f, 0.0f, 0.0f, 0.0f, "none", "none,level,bpm",
+     "What drives the speed boost: loudness, or the detected tempo."},
+    {"speedGain", "Speed boost gain", 0, 0.0f, 4.0f, 0.1f, 1.5f, "", "",
+     "Strength of the speed boost (with the source above)."},
+    {"beatSpin", "Beat → spin kick", 0, 0.0f, 8.0f, 0.25f, 3.0f, "", "",
+     "Each beat shoves the rotation forward; it eases off as the beat fades."},
+    {"beatPulse", "Beat → radius puff (voxels)", 0, 0.0f, 3.0f, 0.25f, 0.8f, "", "",
+     "Beats swell the helix outward this far."},
+    {"strands", "Strands", 0, 1.0f, 3.0f, 1.0f, 2.0f, "", "",
+     "How many strands wind around the axis. 2 = classic DNA."},
+    {"rungEvery", "Rung every N layers", 0, 0.0f, 5.0f, 1.0f, 3.0f, "", "",
+     "Base-pair bridges between the strands (2-strand mode only). 0 = off."},
+    {"rungBright", "Rung brightness", 0, 0.0f, 1.0f, 0.05f, 0.4f, "", "",
+     "Rung brightness relative to the strands."},
+    {"palette", "Palette", 3, 0.0f, 0.0f, 0.0f, 0.0f, "cycle", "",
+     "Colors along the height, each strand offset through it; \"none\" = the "
+     "RGB color below for every strand."},
+    CUBE_PALETTE_SOLO_SPECS
+    {"r", "R", 0, 0.0f, 255.0f, 1.0f, 80.0f, "", "",
+     "Strand red channel."},
+    {"g", "G", 0, 0.0f, 255.0f, 1.0f, 200.0f, "", "",
+     "Strand green channel."},
+    {"b", "B", 0, 0.0f, 255.0f, 1.0f, 255.0f, "", "",
+     "Strand blue channel."},
+};
+
 struct PatternSpecs {
   const char* id;
   const ParamSpec* specs;
@@ -736,6 +771,7 @@ static const PatternSpecs kPatternSpecs[] = {
     {"scan", kSpecs_scan, SPEC_N(kSpecs_scan)},
     {"rail-grind", kSpecs_rail_grind, SPEC_N(kSpecs_rail_grind)},
     {"rez-tunnel", kSpecs_rez_tunnel, SPEC_N(kSpecs_rez_tunnel)},
+    {"double-helix", kSpecs_double_helix, SPEC_N(kSpecs_double_helix)},
     {"cloud", kSpecs_cloud, SPEC_N(kSpecs_cloud)},
     {"comet", kSpecs_comet, SPEC_N(kSpecs_comet)},
     {"text-3d", kSpecs_text_3d, SPEC_N(kSpecs_text_3d)},
