@@ -98,6 +98,20 @@
 #ifndef CUBE_AP_PASS
 #define CUBE_AP_PASS "cubelight"  // default AP+OTA password; change via /wifi
 #endif
+#ifndef CUBE_MDNS_NAME
+#define CUBE_MDNS_NAME "cube"  // mDNS host — give a second cube its own name
+#endif
+// Optional baked-in first-boot WiFi, for OTA-only boards that must come up on
+// the LAN right after their first flash (no USB rescue). Credentials stay out
+// of git: pass at build time via
+//   PLATFORMIO_BUILD_FLAGS='-DCUBE_WIFI_SSID=\"...\" -DCUBE_WIFI_PASS=\"...\"'
+// NVS-saved credentials always win; these are only the empty-NVS defaults.
+#ifndef CUBE_WIFI_SSID
+#define CUBE_WIFI_SSID ""
+#endif
+#ifndef CUBE_WIFI_PASS
+#define CUBE_WIFI_PASS ""
+#endif
 
 using namespace cube;
 
@@ -137,8 +151,8 @@ Settings settings;
 
 void loadSettings() {
   prefs.begin("cube", true);
-  settings.wifiSsid = prefs.getString("ssid", "");
-  settings.wifiPass = prefs.getString("pass", "");
+  settings.wifiSsid = prefs.getString("ssid", CUBE_WIFI_SSID);
+  settings.wifiPass = prefs.getString("pass", CUBE_WIFI_PASS);
   settings.apPass = prefs.getString("appass", CUBE_AP_PASS);
   settings.uiPass = prefs.getString("uipass", "");
   settings.patternId = prefs.getString("pattern", kDefaultPatternId);
@@ -1293,7 +1307,7 @@ bool servicesStarted = false;
 void startNetServices() {
   if (servicesStarted) return;
   servicesStarted = true;
-  MDNS.begin("cube");  // http://cube.local/
+  MDNS.begin(CUBE_MDNS_NAME);  // http://<name>.local/
   udp.begin(kRealtimePort);
   setupWebServer();
   audioCaptureStart();
