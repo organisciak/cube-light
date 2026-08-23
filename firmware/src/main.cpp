@@ -2291,6 +2291,23 @@ void setup() {
   applyGeometry();
 #if CUBE_BUTTON_PIN >= 0
   pinMode(CUBE_BUTTON_PIN, INPUT_PULLUP);
+  // Physical-access rescue: hold the function button through power-on for 3
+  // full seconds to clear a lost console password. That password gates both
+  // /admin and OTA arming, so a mistyped (or browser-autofilled) value would
+  // otherwise mean opening the case for the serial pads. Active-low with a
+  // pullup: a missing or unpressed button reads HIGH and can never trigger.
+  if (digitalRead(CUBE_BUTTON_PIN) == LOW) {
+    uint32_t heldMs = 0;
+    while (digitalRead(CUBE_BUTTON_PIN) == LOW && heldMs < 3000) {
+      delay(50);
+      heldMs += 50;
+    }
+    if (heldMs >= 3000) {
+      saveSetting("uipass", String(""));
+      settings.uiPass = "";
+      Serial.println("[rescue] console password cleared (button held at boot)");
+    }
+  }
 #endif
 #if CUBE_RELAY_PIN >= 0
   pinMode(CUBE_RELAY_PIN, OUTPUT);

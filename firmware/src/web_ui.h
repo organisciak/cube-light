@@ -554,20 +554,20 @@ lock yourself out.</p>
 <form method="POST" action="/wifi" id="f">
 <label>SSID</label><input type="text" name="ssid" id="ssid" value="%SSID%">
 <label>Network password</label>
-<div class="pw"><input type="password" name="pass" id="pass" placeholder="(unchanged)"><button type="button" data-for="pass">show</button></div>
+<div class="pw"><input type="password" name="pass" id="pass" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="(unchanged)"><button type="button" data-for="pass">show</button></div>
 <button class="act sec" type="button" id="test">Test connection</button>
 <div id="testresult"></div>
 
 <h2>Hotspot &amp; flashing</h2>
 %APWARN%
 <label>AP / OTA password (min 8 chars)</label>
-<div class="pw"><input type="password" name="appass" id="appass" placeholder="(unchanged)"><button type="button" data-for="appass">show</button></div>
+<div class="pw"><input type="password" name="appass" id="appass" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="(unchanged)"><button type="button" data-for="appass">show</button></div>
 
 <h2>Settings console</h2>
 <p>Optional password for these pages (username <b>cube</b>) — keeps others
 on the same network from changing settings.</p>
 <label>Console password</label>
-<div class="pw"><input type="password" name="uipass" id="uipass" placeholder="%UIPASS%"><button type="button" data-for="uipass">show</button></div>
+<div class="pw"><input type="password" name="uipass" id="uipass" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="%UIPASS%"><button type="button" data-for="uipass">show</button></div>
 <label class="chk"><input type="checkbox" name="clearui" value="1">Remove console password</label>
 
 <h2>Home Assistant (MQTT)</h2>
@@ -581,7 +581,7 @@ text pattern. See <b>docs/home-assistant.md</b> in the repo for automations
 <label>Broker port</label><input type="text" name="mqport" value="%MQPORT%">
 <label>MQTT username (optional)</label><input type="text" name="mquser" value="%MQUSER%">
 <label>MQTT password</label>
-<div class="pw"><input type="password" name="mqpass" id="mqpass" placeholder="(unchanged)"><button type="button" data-for="mqpass">show</button></div>
+<div class="pw"><input type="password" name="mqpass" id="mqpass" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="(unchanged)"><button type="button" data-for="mqpass">show</button></div>
 
 <button class="act">Save &amp; reboot</button>
 </form>
