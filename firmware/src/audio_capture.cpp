@@ -3,14 +3,27 @@
 #include <Arduino.h>
 #include <arduinoFFT.h>
 #include <driver/i2s_pdm.h>
+#include <driver/i2s_std.h>
 
 #include "cube_audio.h"
 
+// Mic wiring is a build-time property of the board (see platformio.ini):
+//   CUBE_MIC_TYPE 0 — no microphone (GL-C-309WL). Capture never starts;
+//                     patterns see silence and the console says so.
+//   CUBE_MIC_TYPE 1 — PDM mic (GL-C-618WL onboard): DATA + CLK pins.
+//   CUBE_MIC_TYPE 2 — standard I2S mic (INMP441, SPH0645, GL-C-310WL
+//                     onboard): DATA(SD) + CLK(SCK/BCLK) + WS(LRCLK) pins.
+#ifndef CUBE_MIC_TYPE
+#define CUBE_MIC_TYPE 1
+#endif
 #ifndef CUBE_MIC_DATA_PIN
 #define CUBE_MIC_DATA_PIN 32  // 618WL PDM mic data (from stock WLED cfg)
 #endif
 #ifndef CUBE_MIC_CLK_PIN
 #define CUBE_MIC_CLK_PIN 15  // 618WL PDM mic clock
+#endif
+#ifndef CUBE_MIC_WS_PIN
+#define CUBE_MIC_WS_PIN -1  // I2S word select; unused for PDM
 #endif
 
 namespace cube {
@@ -41,10 +54,56 @@ float s_squelchRms = 60.0f;
 bool s_channelLeft = false;
 volatile bool s_reconfigPending = false;
 AudioStats s_stats = {0, 0, 0, 0, 0};
+bool s_available = false;  // true once the driver is up and the task runs
 
 i2s_chan_handle_t s_rx = nullptr;
 
-bool initPdm() {
+#if CUBE_MIC_TYPE == 2
+// Standard I2S (Philips) mic: 24-bit samples left-justified in 32-bit slots.
+// The mic's L/R pin selects which slot it drives; s_channelLeft picks the
+// same way it does for PDM, so the /leds "channel" toggle works for both.
+bool initMic() {
+  i2s_chan_config_t chanCfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+  if (i2s_new_channel(&chanCfg, nullptr, &s_rx) != ESP_OK) return false;
+
+  i2s_std_config_t cfg = {
+      .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(kSampleRate),
+      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT,
+                                                      I2S_SLOT_MODE_MONO),
+      .gpio_cfg =
+          {
+              .mclk = I2S_GPIO_UNUSED,
+              .bclk = (gpio_num_t)CUBE_MIC_CLK_PIN,
+              .ws = (gpio_num_t)CUBE_MIC_WS_PIN,
+              .dout = I2S_GPIO_UNUSED,
+              .din = (gpio_num_t)CUBE_MIC_DATA_PIN,
+              .invert_flags = {.mclk_inv = false, .bclk_inv = false, .ws_inv = false},
+          },
+  };
+  cfg.slot_cfg.slot_mask = s_channelLeft ? I2S_STD_SLOT_LEFT : I2S_STD_SLOT_RIGHT;
+
+  if (i2s_channel_init_std_mode(s_rx, &cfg) != ESP_OK) return false;
+  return i2s_channel_enable(s_rx) == ESP_OK;
+}
+
+// Read kSamples 32-bit slots and fold them to the 16-bit stream the FFT
+// stage expects. Returns false on timeout/short read.
+bool readSamples(int16_t* raw) {
+  // Borrow vImag as the 32-bit landing buffer: same size (kSamples floats),
+  // and the FFT stage zeroes it right after this returns. A dedicated static
+  // buffer would push the classic ESP32's DRAM segment over by ~800 bytes.
+  static_assert(sizeof(vImag) == kSamples * sizeof(int32_t), "scratch size");
+  int32_t* wide = reinterpret_cast<int32_t*>(vImag);
+  size_t bytesRead = 0;
+  if (i2s_channel_read(s_rx, wide, kSamples * sizeof(int32_t), &bytesRead,
+                       pdMS_TO_TICKS(500)) != ESP_OK)
+    return false;
+  if (bytesRead / 4 < (size_t)kSamples) return false;
+  for (int i = 0; i < kSamples; i++) raw[i] = (int16_t)(wide[i] >> 16);
+  return true;
+}
+#else
+bool initMic() {
   i2s_chan_config_t chanCfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
   if (i2s_new_channel(&chanCfg, nullptr, &s_rx) != ESP_OK) return false;
 
@@ -66,7 +125,16 @@ bool initPdm() {
   return i2s_channel_enable(s_rx) == ESP_OK;
 }
 
-void teardownPdm() {
+bool readSamples(int16_t* raw) {
+  size_t bytesRead = 0;
+  if (i2s_channel_read(s_rx, raw, kSamples * sizeof(int16_t), &bytesRead,
+                       pdMS_TO_TICKS(500)) != ESP_OK)
+    return false;
+  return bytesRead / 2 >= (size_t)kSamples;
+}
+#endif
+
+void teardownMic() {
   if (!s_rx) return;
   i2s_channel_disable(s_rx);
   i2s_del_channel(s_rx);
@@ -82,21 +150,16 @@ void captureTask(void*) {
     // deleted underneath a blocking read.
     if (s_reconfigPending) {
       s_reconfigPending = false;
-      teardownPdm();
-      if (!initPdm()) {
-        Serial.println("[mic] pdm reinit failed");
+      teardownMic();
+      if (!initMic()) {
+        Serial.println("[mic] reinit failed");
         vTaskDelay(pdMS_TO_TICKS(1000));
         continue;
       }
       Serial.printf("[mic] reconfigured: channel=%s squelch=%.0f\n",
                     s_channelLeft ? "left" : "right", s_squelchRms);
     }
-    size_t bytesRead = 0;
-    if (i2s_channel_read(s_rx, raw, sizeof(raw), &bytesRead, pdMS_TO_TICKS(500)) !=
-        ESP_OK)
-      continue;
-    const int n = bytesRead / 2;
-    if (n < kSamples) continue;
+    if (!readSamples(raw)) continue;
 
     // DC removal + window into the FFT buffers; RMS for the level/squelch.
     float mean = 0;
@@ -177,19 +240,36 @@ bool audioCaptureStart() {
   Serial.println("[mic] BISECT: mic fully disabled");
   return false;
 #endif
+#if CUBE_MIC_TYPE == 0
+  Serial.println("[mic] no microphone on this board (CUBE_MIC_TYPE=0)");
+  return false;
+#endif
   for (int b = 0; b < AUDIO_BANDS; b++) {
     s_bandPeak[b] = 1.0f;
     s_bandFloor[b] = 1e9f;  // first frame snaps it to reality
     s_bandOut[b] = 0;
   }
-  if (!initPdm()) {
-    Serial.println("[mic] pdm init failed");
+  if (!initMic()) {
+    Serial.println("[mic] init failed");
     return false;
   }
   xTaskCreatePinnedToCore(captureTask, "mic", 8192, nullptr, 1, nullptr, 0);
-  Serial.printf("[mic] pdm capture on data=%d clk=%d (new i2s_pdm driver)\n",
-                CUBE_MIC_DATA_PIN, CUBE_MIC_CLK_PIN);
+  s_available = true;
+  Serial.printf("[mic] %s capture on data=%d clk=%d ws=%d\n", audioCaptureKind(),
+                CUBE_MIC_DATA_PIN, CUBE_MIC_CLK_PIN, CUBE_MIC_WS_PIN);
   return true;
+}
+
+bool audioCaptureAvailable() { return s_available; }
+
+const char* audioCaptureKind() {
+#if CUBE_MIC_TYPE == 0
+  return "none";
+#elif CUBE_MIC_TYPE == 2
+  return "i2s";
+#else
+  return "pdm";
+#endif
 }
 
 void audioCaptureRead(AudioFrame& out) {

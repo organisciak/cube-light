@@ -923,7 +923,7 @@ void playlistAdvance(int dir) {
   }
   // Mic off: auto-play only ambient presets (reactive ones would sit static).
   // If that filter empties the pool, ignore it rather than kill the cycle.
-  const bool micFilter = !settings.micEnabled;
+  const bool micFilter = !settings.micEnabled || !audioCaptureAvailable();
   int pick;
   if (playlist.shuffle) {
     pick = playlistPickWeighted(metas, n, playlist.current, micFilter, curated);
@@ -1371,6 +1371,7 @@ void handleStatus() {
   json += ",\"fps\":" + String(CUBE_FPS);
   json += ",\"uptimeS\":" + String(millis() / 1000);
   json += ",\"micOn\":" + String(settings.micEnabled ? "true" : "false");
+  json += ",\"micAvail\":" + String(audioCaptureAvailable() ? "true" : "false");
   json += ",\"power\":" + String(settings.powerOn ? "true" : "false");
   json += ",\"mqtt\":\"" + String(settings.mqttEnabled ? haMqtt.status() : "off") + "\"";
   json += ",\"otaArmed\":" + String(otaArmed ? "true" : "false");
@@ -2114,6 +2115,8 @@ void setupWebServer() {
             ",\"rms\":" + String(st.lastRms, 1) +
             ",\"dc\":" + String(st.lastDc, 1) + ",\"rawMin\":" + String(st.rawMin) +
             ",\"rawMax\":" + String(st.rawMax) +
+            ",\"mic\":\"" + String(audioCaptureKind()) + "\"" +
+            ",\"avail\":" + String(audioCaptureAvailable() ? "true" : "false") +
             ",\"channel\":\"" + String(settings.micLeft ? "left" : "right") + "\"" +
             ",\"squelch\":" + String(settings.micSquelch, 1) + "}";
     server.send(200, "application/json", json);

@@ -155,7 +155,7 @@ function applyStatus(s){
   const sel=$('pattern');
   if(document.activeElement!==sel)sel.value=s.pattern;
   gameLink(s.pattern);
-  micOn=s.micOn; drawMic();
+  micOn=s.micOn; micAvail=s.micAvail!==false; drawMic();
   powerOn=!!s.power; drawPower();
   isGuest=!!s.guest;
   $('advTogWrap').style.display=isGuest?'none':'flex';  // modulation is owner-only
@@ -200,17 +200,23 @@ async function refresh(){
   loadPlaylists().then(loadPresets);
 }
 let micOn=true;
+let micAvail=true;  // false = board built without a mic; toggle is moot
 let isGuest=false;
 let advanced=localStorage.getItem('cube-adv')==='1';
 $('advTog').checked=advanced;
 $('advTog').onchange=()=>{advanced=$('advTog').checked;localStorage.setItem('cube-adv',advanced?'1':'0');loadParams()};
 function drawMic(){
   const b=$('micToggle');
+  if(!micAvail){
+    b.textContent='🔇 No microphone on this board — patterns run ambient';
+    b.style.background='#26262e';b.style.color='#999';b.disabled=true;return;
+  }
+  b.disabled=false;
   b.textContent=micOn?'🎤 ON — sound drives the patterns':'🔇 OFF — patterns ignore sound';
   b.style.background=micOn?'#2a5aa5':'#26262e';
   b.style.color=micOn?'#fff':'#999';
 }
-$('micToggle').onclick=async()=>{micOn=!micOn;drawMic();await post('/api/mic?on='+(micOn?1:0))};
+$('micToggle').onclick=async()=>{if(!micAvail)return;micOn=!micOn;drawMic();await post('/api/mic?on='+(micOn?1:0))};
 let powerOn=true;
 function drawPower(){
   const b=$('powerToggle');
@@ -488,7 +494,7 @@ function drawPlaylist(){
     ?('Now: '+(plState.current||'—')+' · '+Math.max(0,Math.round(plState.dwellRemainingSec))+'s left'
       +(plState.list?' · 📃 '+plState.list:'')
       +(ovr?' · ⏱ '+ovr+'s each':'')
-      +(!micOn&&anyAmbient?' · 🌙 ambient only':''))
+      +((!micOn||!micAvail)&&anyAmbient?' · 🌙 ambient only':''))
     :'Cycle paused'+(plState.list?' · 📃 '+plState.list:'');
   // Reflect server-side changes (another phone, HA) without fighting focus.
   if(document.activeElement!==$('plDwell')){

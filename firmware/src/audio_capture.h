@@ -1,8 +1,8 @@
 #pragma once
 
-// On-board PDM microphone -> AudioFrame pipeline.
+// Microphone (PDM or standard I2S, chosen by CUBE_MIC_TYPE) -> AudioFrame.
 //
-// A FreeRTOS task on core 0 (Arduino runs on core 1) reads the I2S PDM mic,
+// A FreeRTOS task on core 0 (Arduino runs on core 1) reads the mic,
 // runs a 512-point FFT, collapses magnitudes into the 8 log-spaced bands the
 // patterns expect, tracks an overall level, and feeds the shared
 // BeatDetector. The render loop copies the latest frame with
@@ -18,6 +18,14 @@ namespace cube {
 
 /** Start the capture task. Returns false if the I2S driver failed. */
 bool audioCaptureStart();
+
+/** True once capture is running. False on boards built with no mic
+ * (CUBE_MIC_TYPE=0) or when the driver failed — the console shows "no
+ * microphone" and the playlist skips music-reactive presets. */
+bool audioCaptureAvailable();
+
+/** "pdm", "i2s" or "none" — the compiled-in mic type, for diagnostics. */
+const char* audioCaptureKind();
 
 /** Copy the most recent audio frame (level, bands, beat envelope). */
 void audioCaptureRead(AudioFrame& out);
