@@ -5,41 +5,36 @@ ESP32 itself (GL-C-618WL target). See `docs/on-chip-plan.md` for the full plan.
 
 ## Layout
 
-- `lib/core/` — the pattern engine, **pure C++** (no Arduino headers). Ports of
-  `src/shared/`: geometry, palettes, color, params, and the patterns
+- `lib/core/` — the pattern engine, **pure C++** (no Arduino headers):
+  geometry, palettes, color, params, audio analysis, and the patterns
   themselves. Compiles identically for the ESP32 and for the host.
 - `src/main.cpp` — ESP32 entry point: WiFi, NeoPixelBus (RMT) LED output,
-  DNRGB live-override listener on udp/21324, ArduinoOTA. **Unverified until a
-  board is on the desk** — check `CUBE_LED_PIN` and the color order against
-  stock WLED's settings before first flash.
+  DNRGB live-override listener on udp/21324, ArduinoOTA. Pins come from
+  `platformio.ini` build flags — check them against stock WLED's settings
+  for any new board before first flash.
 - `native/` — host harness. Compiles `lib/core` with clang++ and streams
   frames as WLED DNRGB packets, so the exact firmware pattern code can be
-  previewed with zero hardware.
+  run with zero hardware (point it at a real cube, stock WLED, or a
+  DNRGB-speaking simulator).
 - `platformio.ini` — ESP32 build config (`pio run -e gledopto618 -t upload`).
 - `src/ha_mqtt.h` — Home Assistant bridge (MQTT discovery: light + pattern /
   preset selects + text entity). Configure from `/wifi`; see
   `docs/home-assistant.md` for automations (song titles, album art).
 
-## Emulating without hardware
-
-Terminal 1 — web app + server with the virtual cube enabled:
-
-```bash
-pnpm dev:virtual        # = VIRTUAL_WLED=1 pnpm dev
-```
-
-Terminal 2 — build and run the firmware core natively:
+## Running the engine without hardware
 
 ```bash
 firmware/native/build.sh
-firmware/native/build/cube-native wavy-sheet --fake-audio
+firmware/native/build/cube-native wavy-sheet --fake-audio --host 192.168.0.180
 ```
 
-The harness sends DNRGB to `127.0.0.1:21324`; the server (in virtual-WLED
-mode) receives it and mirrors frames to the browser's 3D preview at
-`http://localhost:5273`, overriding its own pattern loop — the same
-live-override semantics real WLED applies. Stop the harness and the server's
-own patterns resume after the 2s timeout.
+The harness renders the exact firmware pattern code on your machine and sends
+DNRGB packets (udp/21324) to `--host` (default `127.0.0.1`). Any DNRGB receiver
+works: a cube running this firmware (its live-override listener takes the
+frames), stock WLED with *Receive UDP realtime* on, or a simulator. A
+browser-based simulator that receives these frames is planned (see the beads
+issue tracker); the retired React preview that used to fill this role lives at
+git tag `wled-prototype`.
 
 Harness usage:
 
@@ -50,33 +45,28 @@ cube-native [patternId] [key=value ...] [--fps N] [--seconds S] [--fake-audio]
 
 `key=value` pairs map to the pattern's params (`true`/`false` → bool, numbers
 → number, else string), e.g. `cube-native wavy-sheet palette=arctic amp=2`.
-Unset params use the same defaults as the TS versions.
+Unset params use the defaults from `cube_param_specs.h`.
 
-Caveat: the harness renders with the **default layout**; if the previewing
-server has a calibrated layout active, the preview will look scrambled. Keep
-the server on the default layout when emulating (or teach the harness the
-calibrated layout when that matters).
+Caveat: the harness renders with the **default layout**; a receiver with a
+calibrated layout active will look scrambled.
 
-## Porting a pattern from TS
+## Adding a pattern
 
-1. Copy the closest `pat_*.cpp`, translate the TS render body — the
-   `PatternCtx` fields match `src/shared/patterns/types.ts` one-for-one.
-   Params are read with inline defaults (`p.num("amp", 1.2f)`) mirroring the
-   TS `num(params.amp, 1.2)` idiom.
-2. Register it in `cube_patterns.cpp`.
-3. `firmware/native/build.sh && cube-native <id>` against `pnpm dev:virtual`
-   and eyeball it next to the TS original.
-
-Ported so far: `wavy-sheet`, `plasma`, `rotating-planes`, `solid`.
+1. Copy the closest `pat_*.cpp` and write the render body against
+   `PatternCtx` (`cube_pattern.h`): `t`, `dt`, `audio`, `params`, and the
+   `setIdx(x,y,z)` voxel index. Params are read with inline defaults
+   (`p.num("amp", 1.2f)`).
+2. Register it in `cube_patterns.cpp` and add its spec block to
+   `cube_param_specs.h` (that block drives the web UI's controls).
+3. `firmware/native/build.sh && cube-native <id> --fake-audio` against a cube
+   or simulator, then an on-cube pass — LED cubes read very differently from
+   a screen (sparse, high-contrast designs win).
 
 ### Pattern param specs
 
 `lib/core/cube_param_specs.h` (parameter names/types/ranges/defaults for the
-web UI) is now **hand-maintained and authoritative** — edit it directly when
-adding or changing a pattern's params. It was originally generated from the TS
-patterns by `scripts/gen-param-specs.mts`, but the TS side is deprecated and
-that generator is **retired**: do not re-run it, as it would clobber
-firmware-only params (e.g. the spiral `cycle` axis).
+web UI) is **hand-maintained and authoritative** — edit it directly when
+adding or changing a pattern's params.
 
 Two shared blocks get spliced into pattern spec arrays instead of being
 retyped, so the same knob means the same thing everywhere:

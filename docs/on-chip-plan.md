@@ -1,3 +1,8 @@
+> **Historical.** This was the plan for moving the pattern engine from the
+> React/Node prototype onto the ESP32. That port is complete and the prototype
+> was retired (git tag `wled-prototype`). Kept for the hardware reasoning and
+> the design rationale; paths and workflow described below no longer exist.
+
 # Porting cube-light to the chip
 
 **Goal:** the pattern brain runs standalone on the Gledopto ESP32 — no laptop, no

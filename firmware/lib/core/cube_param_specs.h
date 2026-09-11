@@ -2,12 +2,9 @@
 // AUTHORITATIVE / HAND-MAINTAINED. Edit this file directly when adding or
 // changing firmware pattern params.
 //
-// This file was ORIGINALLY generated from the TS patterns in
-// src/shared/patterns/* by scripts/gen-param-specs.mts, back when the TS side
-// was the single source of truth. That TS side is now deprecated and the
-// generator (scripts/gen-param-specs.mts) is RETIRED — do NOT re-run it against
-// this file. It would clobber firmware-only additions (e.g. the spiral "cycle"
-// axis option) that no longer exist on the TS side.
+// (It was once generated from the retired TypeScript prototype, preserved at
+// git tag `wled-prototype`; that generator is gone and this header is the
+// single source of truth for pattern params.)
 #include <cstdint>
 
 namespace cube {

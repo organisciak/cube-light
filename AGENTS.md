@@ -1,92 +1,75 @@
 # cube-light
 
-React + Node prototyping environment for a 10×10×10 WS2811 LED cube driven by WLED.
+Firmware for a 10×10×10 WS2811 LED cube (1000 voxels) that runs standalone on
+an ESP32: pattern engine, audio reactivity from an onboard mic, a phone-friendly
+web console, presets/playlists, games, and a Home Assistant bridge.
+
+The original React/Node prototype (browser 3D preview + Node server streaming
+DNRGB to stock WLED) was removed once the firmware became the sole source of
+truth. It is preserved at git tag `wled-prototype` if you need to consult it.
 
 ## Hardware
 
-- WLED 0.15.3 on ESP32 (Gledopto controller), 1000 LEDs, RGB.
-- mDNS: `cube.local` (currently `192.168.0.180`).
-- UDP realtime port: `21324`.
+- Primary: Gledopto GL-C-618WL (ESP32-WROOM, USB-C, onboard PDM mic, relay).
+  mDNS `cube.local`.
+- Backup: Gledopto GL-C-309WL (no USB, OTA-only, **no mic** per the
+  manufacturer's manual — the GL-C-310WL is the mic variant). mDNS `cube2.local`.
+- Any classic ESP32 + an I2S/PDM mic works; pins are `-D` build flags in
+  `firmware/platformio.ini`.
+- LEDs: two chains of 500 on separate outputs (`CUBE_LED_SPLIT`).
 
-## Architecture
+## Layout
 
-- `vite` dev server (port **5273**) — React UI with a 3D cube preview.
-- `server/` (port **3037**) — Express + ws + UDP. Owns the pattern loop, sends DNRGB packets to WLED, mirrors frames to WS clients for the preview.
+- `firmware/lib/core/` — the pattern engine in **pure C++** (no Arduino
+  headers). Geometry, palettes, params, audio analysis, and one `pat_*.cpp`
+  per pattern. Compiles identically for the ESP32 and the host.
+- `firmware/src/` — ESP32 glue: `main.cpp` (WiFi/AP fallback, LED output,
+  web server + auth tiers, playlist, button, OTA), `web_ui.h` (the console
+  HTML/JS as C strings), `audio_capture.cpp` (I2S mic → FFT → `AudioFrame`),
+  `cube_presets.*` (LittleFS preset store), `ha_mqtt.h` (Home Assistant).
+- `firmware/native/` — host harness: builds `lib/core` with clang++ and
+  streams frames as WLED DNRGB packets (udp/21324) for hardware-free preview.
+- `firmware/platformio.ini` — one `[env:...]` per board with pin flags.
+- `docs/` — flashing runbooks, HA integration, stock-WLED config backups,
+  screenshots. `docs/on-chip-plan.md` and `docs/controller-plan.md` are
+  design notes, the first historical.
 
-(Both ports are non-default to avoid clashes with other local dev servers. Override with `PORT=` for the server, or edit `vite.config.ts` for the web port.)
-- Pattern engine and geometry mapping live in `src/shared/` so client and server agree on pixel layout.
+## Conventions
 
-## Realtime protocol
+- **Param specs are hand-maintained** in `firmware/lib/core/cube_param_specs.h`
+  and authoritative for the web UI. Edit that header when adding or changing a
+  pattern's params.
+- **Every pattern writes every LED every frame.** No pattern may "remember" lit
+  pixels by skipping writes; persistence (rain trails, decay) is the pattern's
+  own job inside `render()`.
+- **Mode transitions blackout.** Entering/exiting calibration, pause, or a
+  user-requested pattern swap sends one all-off frame first.
+- Audio-reactive terms must be scaled; see the `throb` and `audio` helpers.
+- Guest vs owner: anyone on the cube's own AP is a guest (patterns, params,
+  brightness, game pad) unless they prove ownership with the console password
+  (or the AP password when none is set). Owner-only pages *challenge* with
+  Basic auth; owner-only API routes return a friendly 403.
 
-WLED DNRGB (0x04) over UDP:
+## Building and flashing
 
+```bash
+cd firmware
+~/.platformio/penv/bin/pio run -e gledopto618            # build
+~/.platformio/penv/bin/pio run -e gledopto618 -t upload  # first flash over USB
+firmware/native/build.sh && firmware/native/build/cube-native wavy-sheet --fake-audio
 ```
-[0x04, timeout_secs, start_high, start_low, R0, G0, B0, R1, G1, B1, ...]
-```
 
-- Max ~489 LEDs per packet (header 4B + payload ≤ 1467B fits MTU comfortably).
-- For 1000 LEDs we send 3 packets per frame. The first packet's `timeout` byte applies to the whole frame; WLED reverts to its own effects after `timeout` seconds with no packets.
+`pio` may not be on PATH — use the penv path above. OTA after the first flash
+is gated: set a non-default AP password, arm the window from `/admin`, then
+`espota.py`. See `docs/flashing-offline.md`. The 309 keeps stock WLED's 1.5 MB
+app slot: watch its size check on every build.
 
-## Scripts
+## Quality gates
 
-- `pnpm dev` — concurrent web + server.
-- `pnpm dev:web` / `pnpm dev:server` — individually.
-- `pnpm dev:virtual` — like `dev` but the server also listens for DNRGB on
-  udp/21324 and mirrors received frames to the preview (virtual WLED). Used to
-  preview the C++ firmware core with no cube attached.
-
-## Firmware (on-chip port)
-
-`firmware/` holds the standalone ESP32 port (target: Gledopto GL-C-618WL).
-`firmware/lib/core/` is the pattern engine in pure C++ — shared verbatim
-between the ESP32 build (`platformio.ini`) and a native host harness
-(`firmware/native/`) that streams DNRGB for hardware-free previewing.
-See `firmware/README.md` and `docs/on-chip-plan.md`. When porting a TS
-pattern, keep the C++ line-for-line faithful to `src/shared/patterns/`.
-
-Pattern param specs (`firmware/lib/core/cube_param_specs.h`) are now
-**hand-maintained and authoritative** — edit that header directly. It was once
-generated from the TS patterns by `scripts/gen-param-specs.mts`, but the TS side
-is deprecated and that generator is **retired**; do not re-run it (it would
-clobber firmware-only params such as the spiral `cycle` axis).
-
-## Layout calibration
-
-The mapping from `(x, y, z)` to LED index depends on how the strings are wired.
-`src/shared/geometry.ts` exposes `makeIndex(layout)` with axis permutation, per-axis
-flip, and serpentine flags. The Calibrate tab in the UI runs a wizard: it lights one
-LED at a time, the user records its (x,y,z), and the server's solver narrows the 192
-candidate layouts to the unique match. Samples persist to `data/calibration.csv` and
-are hand-editable / copy-pastable.
-
-`src/shared/orientation.ts` adds an independent post-pattern transform (24-orientation
-rotation group) so the user can rotate the *design* — what gets sent to the cube — via
-the X / Y / Z buttons in the bottom-left corner of the preview. Calibration is wiring;
-orientation is "which way is up?".
-
-## Pixel hygiene
-
-Each frame already sends all 1000 LEDs (3 DNRGB packets per frame), so no LED can be
-"stuck on" longer than one dropped packet. Still, observe these rules so a misstep
-doesn't strand pixels:
-
-- **At mode transitions** (entering/exiting calibration, pause, pattern swap on
-  user request): call `blackout()` on the server. It zeroes the buffer, broadcasts
-  one frame, and pushes one DNRGB packet — guarantees a clean visual transition
-  rather than relying on the next loop tick.
-- **On pause** (`setRunning=false`): we send a single all-off frame and stop the
-  loop. Without this, WLED would keep showing the last frame for `timeoutSecs`
-  (currently 2s) before reverting to its own effects.
-- **Periodic deep clean (low priority, todo)**: even though every frame is a full
-  refresh, an occasional explicit "GC" pass — e.g. one all-off frame inserted
-  every N seconds, or one round of two frames `(black, current)` — would catch
-  any LED whose state drifted due to repeated packet loss in a tiny corner of
-  the cube. Tracked as a beads issue. Keep it low-priority because correctly-
-  sized DNRGB packets and DDP both already hit every LED on every send.
-- **When growing patterns**: do NOT design any pattern that "remembers" lit
-  pixels by skipping writes. The buffer is reset implicitly only inside each
-  pattern's `render()`. If a pattern wants persistence (rain trails, fire), it
-  must own the decay logic and write every LED every frame.
+- Both envs build: `pio run -e gledopto618 -e gledopto309`.
+- Native harness builds: `firmware/native/build.sh`.
+- Anything touching LED output, mic, WiFi, or auth gets an on-cube pass
+  before it is called done (file a beads issue if a cube isn't at hand).
 
 ## Landing the Plane (Session Completion)
 
