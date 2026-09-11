@@ -53,7 +53,7 @@
 #include "ha_mqtt.h"
 #include "web_ui.h"
 
-#define CUBE_VERSION "0.4.3"
+#define CUBE_VERSION "0.5.0"
 
 #ifndef CUBE_LED_PIN
 #define CUBE_LED_PIN 16
@@ -139,6 +139,8 @@ struct Settings {
   float micSquelch;   // raw RMS below this = silence
   bool micEnabled;    // master toggle: false = patterns see silence
   bool powerOn;       // HA light switch: false = dark (relay dropped if fitted)
+  bool apGuests;      // true = hotspot clients are guests; false = the WPA2
+                      // password is the only gate and AP clients are owners
   bool mqttEnabled;   // Home Assistant MQTT integration
   String mqttHost;
   uint16_t mqttPort;
@@ -177,6 +179,7 @@ void loadSettings() {
   settings.micSquelch = prefs.getFloat("micsq", 60.0f);
   settings.micEnabled = prefs.getBool("micen", true);
   settings.powerOn = prefs.getBool("power", true);
+  settings.apGuests = prefs.getBool("apguests", true);
   settings.mqttEnabled = prefs.getBool("mqen", false);
   settings.mqttHost = prefs.getString("mqhost", "");
   settings.mqttPort = (uint16_t)prefs.getUInt("mqport", 1883);
@@ -222,6 +225,13 @@ void saveSetting(const char* key, float v) {
 void saveSetting(const char* key, uint32_t v) {
   prefs.begin("cube", false);
   prefs.putUInt(key, v);
+  prefs.end();
+}
+void saveSetting(const char* key, bool v) {
+  // NVS skips the write when the stored value already matches, so calling
+  // this redundantly (e.g. per button press) costs a read, not flash wear.
+  prefs.begin("cube", false);
+  prefs.putBool(key, v);
   prefs.end();
 }
 
@@ -740,6 +750,23 @@ struct PlaylistState {
 };
 PlaylistState playlist;
 
+// The cycle's on/off switch, shuffle and curated-list choice survive a reset:
+// the cube is a fixture, and a power blip shouldn't leave it stuck on one
+// pattern. Only *explicit* toggles (console, HA, function button) persist —
+// pausePlaylistForManual() stays RAM-only, so a manual preset pick is a
+// temporary detour and the next boot returns to the cycle. Enabled defaults
+// to ON for a factory cube.
+void playlistLoadPrefs() {
+  prefs.begin("cube", true);
+  playlist.enabled = prefs.getBool("plon", true);
+  playlist.shuffle = prefs.getBool("plshuf", false);
+  playlist.list = prefs.getString("pllist", "");
+  prefs.end();
+  // Zero dwell so the first playlistTick() swaps the boot pattern for the
+  // playlist's pick as soon as services are up, not 20s later.
+  if (playlist.enabled) playlist.dwellSec = 0;
+}
+
 // Curated playlists (cube-eq5 follow-on): named subsets of the preset store,
 // persisted as one JSON file {"lists":[{"name":..,"presets":[names...]}]}.
 // The default cycle (all presets, priority rules) needs no entry here.
@@ -926,6 +953,18 @@ void playlistTick() {
   playlistAdvance(+1);
 }
 
+// Start/stop the cycle. Starting loads the first preset immediately rather
+// than waiting out a dwell. Shared by the owner console and the guest tier.
+void playlistSetEnabled(bool en) {
+  if (en && !playlist.enabled) {
+    playlist.enabled = true;
+    playlist.current = "";
+    playlistAdvance(+1);  // load the first preset now
+  } else {
+    playlist.enabled = en;
+  }
+}
+
 // ---- Home Assistant MQTT bridge ----------------------------------------------
 
 void startHaMqtt() {
@@ -962,6 +1001,7 @@ void startHaMqtt() {
   };
   hooks.getPlaylistOn = []() { return playlist.enabled; };
   hooks.setPlaylistOn = [](bool on) {
+    saveSetting("plon", on);  // HA's switch is an explicit choice — boots stick
     if (on && !playlist.enabled) {
       playlist.enabled = true;
       playlist.current = "";
@@ -971,14 +1011,21 @@ void startHaMqtt() {
     }
   };
   hooks.getShuffle = []() { return playlist.shuffle; };
-  hooks.setShuffle = [](bool on) { playlist.shuffle = on; };
+  hooks.setShuffle = [](bool on) {
+    playlist.shuffle = on;
+    saveSetting("plshuf", on);
+  };
   hooks.playlistStep = [](int dir) {
-    if (!playlist.enabled) playlist.enabled = true;
+    if (!playlist.enabled) {
+      playlist.enabled = true;
+      saveSetting("plon", true);
+    }
     playlistAdvance(dir);
   };
   hooks.getPlaylistList = []() { return playlist.list; };
   hooks.setPlaylistList = [](const String& l) {
     playlist.list = l;
+    saveSetting("pllist", l);
     if (playlist.enabled) playlistAdvance(+1);
   };
   hooks.playlistOptions = [](JsonArray arr) {
@@ -1034,9 +1081,19 @@ void handleButton() {
     lastEdgeMs = now;
     lastState = state;
     if (!state) {
-      // Press = next pattern; if the cube is "off", the button wakes it first.
-      if (!settings.powerOn) setCubePower(true);
-      else setPatternByIndex(activePatternIdx + 1);
+      // Press = next playlist preset; if the cube is "off", wake it first.
+      // The button re-enables a paused cycle rather than stepping raw
+      // patterns — it's the no-network way to say "show me something else".
+      if (!settings.powerOn) {
+        setCubePower(true);
+      } else {
+        if (!playlist.enabled) saveSetting("plon", true);
+        playlist.enabled = true;
+        playlistAdvance(+1);
+        // Empty preset store: playlistAdvance() bails and disables itself,
+        // so fall back to cycling the built-in patterns.
+        if (!playlist.enabled) setPatternByIndex(activePatternIdx + 1);
+      }
     }
   }
 #endif
@@ -1058,6 +1115,12 @@ NetState netState = NetState::ApFallback;
 uint32_t netStampMs = 0;
 uint32_t lastStaRetryMs = 0;
 uint32_t staLostMs = 0;
+// A STA retry is a bounded *attempt*, not a standing state. Left in AP_STA,
+// the STA half auto-reconnects forever, rescanning all channels; every scan
+// drags the single radio off the AP's channel, so hotspot clients see a
+// sluggish console and dropped realtime packets whenever the home SSID is
+// out of range (playa mode). We park back on AP-only between attempts.
+bool staRetryInFlight = false;
 
 // Credential test (from the /wifi page): trial join in AP_STA so the page
 // stays reachable. Result is polled via GET /api/wifitest.
@@ -1133,6 +1196,7 @@ void netTick() {
         WiFi.begin(settings.wifiSsid.c_str(), settings.wifiPass.c_str());
         netState = NetState::ApFallback;
         lastStaRetryMs = now;
+        staRetryInFlight = true;  // bounded attempt; parks on AP if it fails
       }
       break;
     case NetState::ApFallback:
@@ -1144,8 +1208,20 @@ void netTick() {
           WiFi.mode(WIFI_STA);
           netState = NetState::StaOnline;
           staLostMs = 0;
-        } else if (now - lastStaRetryMs > 120000) {
+          staRetryInFlight = false;
+        } else if (staRetryInFlight && now - lastStaRetryMs > 25000) {
+          // Attempt failed — quiesce the STA so it stops scanning.
+          staRetryInFlight = false;
+          WiFi.disconnect();
+          WiFi.mode(WIFI_AP);
+          Serial.println("[net] sta retry failed; radio parked on AP");
+        } else if (!staRetryInFlight && now - lastStaRetryMs > 120000 &&
+                   WiFi.softAPgetStationNum() == 0) {
+          // Retry only while nobody is on the hotspot: an off-channel scan
+          // mid-party stutters everyone. The moment the last client leaves,
+          // this condition is already ripe and the retry fires.
           lastStaRetryMs = now;
+          staRetryInFlight = true;
           Serial.println("[net] retrying sta join (AP stays up)");
           WiFi.mode(WIFI_AP_STA);
           WiFi.begin(settings.wifiSsid.c_str(), settings.wifiPass.c_str());
@@ -1192,6 +1268,18 @@ void disarmOta() {
 
 WebServer server(80);
 
+// One protection space for every owner-only page, so the browser caches a
+// single credential across /admin, /leds, /calibrate and /wifi. Realm text
+// rides in an HTTP header — keep it ASCII. The fail body is what shows if the
+// visitor cancels the prompt, so it says who to log in as.
+static const char kAuthRealm[] = "cube owner (username: cube)";
+static const char kAuthFailHtml[] =
+    "<!doctype html><meta name=viewport content=\"width=device-width\">"
+    "<body style=\"font:16px system-ui;padding:2em;max-width:30em\">"
+    "<h2>Owner login</h2><p>Log in as <b>cube</b> with the console password. "
+    "If no console password has been set, use the cube's Wi-Fi password.</p>"
+    "<p><a href=\"/\">Back to the patterns</a></p>";
+
 // Optional console password (HTTP Basic auth, username "cube"). Gates the
 // ADMIN tier only: hardware, network, calibration, and anything persistent.
 // The guest tier (pattern picking, live params, brightness, game pad) stays
@@ -1199,8 +1287,20 @@ WebServer server(80);
 bool authed() {
   if (settings.uiPass.length() == 0) return true;
   if (server.authenticate("cube", settings.uiPass.c_str())) return true;
-  server.requestAuthentication();
+  server.requestAuthentication(BASIC_AUTH, kAuthRealm, kAuthFailHtml);
   return false;
+}
+
+// The secret that proves ownership to a client on the cube's own AP: the
+// console password, or — when none has been set — the AP/OTA password, which
+// is never empty. That fallback is the whole point: with no console password
+// there is otherwise *no* credential an owner can offer, so a cube on its
+// fallback AP (home Wi-Fi out of range) locks its owner out of the admin
+// pages until it is reflashed over USB. It is a speed bump rather than a
+// secret, since everyone on the AP typed that password to join — set a
+// console password from /wifi before handing the cube to a crowd.
+const String &ownerPass() {
+  return settings.uiPass.length() ? settings.uiPass : settings.apPass;
 }
 
 // A "guest" is anyone connected to the cube's own SoftAP (typically the
@@ -1217,17 +1317,20 @@ bool isGuestRequest() {
   const IPAddress ap = WiFi.softAPIP();
   const IPAddress cl = server.client().remoteIP();
   if (!(cl[0] == ap[0] && cl[1] == ap[1] && cl[2] == ap[2])) return false;
-  // AP-subnet client — a guest, unless a console password is set and this
-  // client proves ownership with it (the owner's escape hatch when the cube
-  // is on its fallback AP away from home).
-  if (settings.uiPass.length() &&
-      server.authenticate("cube", settings.uiPass.c_str()))
-    return false;
+  // Guest tier disabled (WiFi page): knowing the WPA2 hotspot password IS
+  // ownership — everyone who can associate gets the full console.
+  if (!settings.apGuests) return false;
+  // AP-subnet client — a guest until it proves ownership with ownerPass()
+  // (the owner's escape hatch when the cube is on its fallback AP away from
+  // home).
+  if (server.authenticate("cube", ownerPass().c_str())) return false;
   return true;
 }
 
-// Reject owner-only actions from guests with a friendly 403. Returns true if
-// the request was blocked (caller should return immediately).
+// Reject owner-only *actions* from guests with a friendly 403. Returns true
+// if the request was blocked (caller should return immediately). For API
+// routes only: a 401 here would pop a login box in the middle of the guest
+// app, and the page that issued the fetch already had its chance to log in.
 bool guestBlocked() {
   if (isGuestRequest()) {
     server.send(403, "text/plain",
@@ -1236,6 +1339,17 @@ bool guestBlocked() {
     return true;
   }
   return false;
+}
+
+// Owner-only *pages*: ask for the password instead of refusing. Whoever lands
+// on /admin gets the browser's login prompt — a guest cancels out of it, the
+// owner types the password and is in. Never answer a page with a bare 403:
+// with no prompt attached that is a dead end with no way forward, which is
+// exactly what this replaces.
+bool guestChallenged() {
+  if (!isGuestRequest()) return false;
+  server.requestAuthentication(BASIC_AUTH, kAuthRealm, kAuthFailHtml);
+  return true;
 }
 
 void handleStatus() {
@@ -1805,12 +1919,16 @@ void setupWebServer() {
     server.send(200, "text/plain", "ok");
   });
   // ---- playlist cycling ----
-  // Configure/toggle the cycle. Owner-only, EXCEPT a guest may pause
-  // (enabled=0) so a party-goer can stop the rotation on a pattern they like.
+  // Configure/toggle the cycle. Owner-only, EXCEPT a guest may play/pause so a
+  // party-goer can stop the rotation on a pattern they like and start it again
+  // afterwards. Everything else (shuffle, list, dwell) stays owner-only.
   server.on("/api/playlist", HTTP_POST, []() {
     if (isGuestRequest()) {
-      if (server.arg("enabled") == "0") {
-        playlist.enabled = false;
+      if (server.hasArg("enabled")) {
+        // Deliberately no saveSetting(): a guest's toggle lives in RAM only,
+        // so a reset restores the owner's console choice.
+        playlistSetEnabled(server.arg("enabled") == "1");
+        haMqtt.markDirty();
         server.send(200, "text/plain", "ok");
       } else {
         guestBlocked();  // sends the 403
@@ -1818,11 +1936,15 @@ void setupWebServer() {
       return;
     }
     if (!authed()) return;
-    if (server.hasArg("shuffle")) playlist.shuffle = server.arg("shuffle") == "1";
+    if (server.hasArg("shuffle")) {
+      playlist.shuffle = server.arg("shuffle") == "1";
+      saveSetting("plshuf", playlist.shuffle);
+    }
     // Curated list selection ("" = all presets). Switching mid-cycle re-picks
     // so the change is visible immediately.
     if (server.hasArg("list")) {
       playlist.list = server.arg("list");
+      saveSetting("pllist", playlist.list);
       if (playlist.enabled) playlistAdvance(+1);
     }
     // Demo dwell override (0 = per-preset times). Applies to the preset
@@ -1835,13 +1957,8 @@ void setupWebServer() {
     }
     if (server.hasArg("enabled")) {
       const bool en = server.arg("enabled") == "1";
-      if (en && !playlist.enabled) {
-        playlist.enabled = true;
-        playlist.current = "";
-        playlistAdvance(+1);  // load the first preset now
-      } else {
-        playlist.enabled = en;
-      }
+      saveSetting("plon", en);  // owner's console toggle survives a reset
+      playlistSetEnabled(en);
     }
     haMqtt.markDirty();  // transport state changed — sync HA promptly
     server.send(200, "text/plain", "ok");
@@ -2123,19 +2240,26 @@ void setupWebServer() {
     json += "}";
     server.send(200, "application/json", json);
   });
+  // Admin HTML pages answer an unproven visitor with a challenge, never a
+  // 403: authed() prompts when a console password is set, guestChallenged()
+  // prompts when the request comes from the AP subnet, and valid credentials
+  // make isGuestRequest() false. Between them there is always a prompt to
+  // answer, which is how the owner gets in from the fallback AP.
+  // API routes keep guestBlocked() first: the browser reuses cached page
+  // credentials there, and guests should get the friendly 403, not a popup.
   server.on("/calibrate", HTTP_GET, []() {
-    if (guestBlocked()) return;
     if (!authed()) return;
+    if (guestChallenged()) return;
     server.send(200, "text/html", kCalibrateHtml);
   });
   server.on("/admin", HTTP_GET, []() {
-    if (guestBlocked()) return;
     if (!authed()) return;
+    if (guestChallenged()) return;
     server.send(200, "text/html", kAdminHtml);
   });
   server.on("/leds", HTTP_GET, []() {
-    if (guestBlocked()) return;
     if (!authed()) return;
+    if (guestChallenged()) return;
     server.send(200, "text/html", kLedsHtml);
   });
   // Game pad: intentionally NOT auth-gated so guests can play snake/pacman
@@ -2234,11 +2358,12 @@ void setupWebServer() {
     server.send(200, "text/plain", "ok");
   });
   server.on("/wifi", HTTP_GET, []() {
-    if (guestBlocked()) return;
     if (!authed()) return;
+    if (guestChallenged()) return;
     String page = kWifiHtml;
     page.replace("%SSID%", settings.wifiSsid);
     page.replace("%UIPASS%", settings.uiPass.length() ? "(unchanged)" : "(not set)");
+    page.replace("%APGUESTS%", settings.apGuests ? "checked" : "");
     page.replace("%MQEN%", settings.mqttEnabled ? "checked" : "");
     page.replace("%MQHOST%", settings.mqttHost);
     page.replace("%MQPORT%", String(settings.mqttPort));
@@ -2255,14 +2380,15 @@ void setupWebServer() {
     server.send(200, "text/html", page);
   });
   server.on("/wifi", HTTP_POST, []() {
-    if (guestBlocked()) return;
     if (!authed()) return;
+    if (guestChallenged()) return;
     if (server.hasArg("ssid")) saveSetting("ssid", server.arg("ssid"));
     if (server.arg("pass").length() > 0) saveSetting("pass", server.arg("pass"));
     if (server.arg("appass").length() >= 8) saveSetting("appass", server.arg("appass"));
     if (server.hasArg("clearui")) saveSetting("uipass", String(""));
     else if (server.arg("uipass").length() >= 4) saveSetting("uipass", server.arg("uipass"));
     prefs.begin("cube", false);
+    prefs.putBool("apguests", server.hasArg("apguests"));
     prefs.putBool("mqen", server.hasArg("mqen"));
     if (server.hasArg("mqhost")) prefs.putString("mqhost", server.arg("mqhost"));
     if (server.arg("mqport").toInt() > 0)
@@ -2287,6 +2413,7 @@ void setup() {
   loadSettings();
   loadSnakeDirMap();  // player-relative D-pad -> cube-direction map
   presetsBegin();  // mount LittleFS for preset storage
+  playlistLoadPrefs();  // restore the auto-cycle (default: on)
   applyColorOrder(settings.colorOrder);
   applyGeometry();
 #if CUBE_BUTTON_PIN >= 0

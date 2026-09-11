@@ -477,11 +477,10 @@ function markNow(){
   });
 }
 function drawPlaylist(){
-  // Guests may pause but not skip, shuffle, or start the cycle.
+  // Guests may play/pause but not skip or shuffle.
   ['plPrev','plNext','plShuffle'].forEach(id=>{$(id).disabled=isGuest;$(id).style.opacity=isGuest?.4:1});
-  const noStart=isGuest&&!plState.enabled;  // ▶ would start the cycle — owner-only
-  $('plPlay').disabled=noStart;$('plPlay').style.opacity=noStart?.4:1;
-  $('plPlay').title=noStart?'Owners start the cycle; guests may pause':'Play/pause cycle';
+  $('plPlay').disabled=false;$('plPlay').style.opacity=1;
+  $('plPlay').title='Play/pause cycle';
   $('plPlay').textContent=plState.enabled?'⏸':'▶';
   $('plShuffle').style.background=plState.shuffle?'#2a5aa5':'#26262e';
   const ovr=Math.round(+plState.dwellOverrideSec||0);
@@ -505,7 +504,6 @@ $('plToggle').onclick=()=>{$('sidebar').classList.toggle('open');loadPlaylists()
 $('plClose').onclick=()=>$('sidebar').classList.remove('open');
 addEventListener('keydown',e=>{if(e.key==='Escape')$('sidebar').classList.remove('open')});
 $('plPlay').onclick=async()=>{
-  if(!plState.enabled&&isGuest)return;  // guests may pause but not start
   if(!plState.enabled&&!presetNames.length){toast('No presets to cycle yet');return}
   await post('/api/playlist?enabled='+(plState.enabled?0:1));poll();
 };
@@ -562,6 +560,11 @@ lock yourself out.</p>
 %APWARN%
 <label>AP / OTA password (min 8 chars)</label>
 <div class="pw"><input type="password" name="appass" id="appass" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="(unchanged)"><button type="button" data-for="appass">show</button></div>
+<label class="chk"><input type="checkbox" name="apguests" value="1" %APGUESTS%>Hotspot visitors are guests (patterns &amp; knobs only)</label>
+<p>Checked: people who join the hotspot can play with patterns but need the
+console password for settings — right for handing the cube to a crowd on an
+open-ish password. Unchecked: the WPA2 password above is the only gate, and
+everyone on the hotspot gets the full console.</p>
 
 <h2>Settings console</h2>
 <p>Optional password for these pages (username <b>cube</b>) — keeps others

@@ -21,3 +21,12 @@ firmware/native/build/
 .beads/interactions.jsonl
 .beads/hooks/
 .beads/embeddeddolt/
+.beads/dolt-server.pid
+.beads/dolt-server.port
+.beads/dolt-server.lock
+.beads/backup/
+.beads/.auto-import-issues.jsonl
+.playwright-cli/
+
+# prebuilt firmware images + flash dumps (multi-MB; attach to GitHub releases instead)
+firmware/release/

@@ -82,6 +82,10 @@ void render(PatternCtx& ctx) {
   const char* text = p.str("text", "HELLO 123 ");
   const float baseSpeed = p.num("speed", 3.0f);
   const bool reverse = p.boolean("reverse", false);
+  // The 24-rotation orientation group can spin the design but never reflect
+  // it, so text that reads backwards from the natural viewing side has no
+  // rotation fix — this flips the glyphs' horizontal axis instead.
+  const bool mirror = p.boolean("mirror", false);
   const int charSpacing = (int)std::fmax(1.0f, std::floor(p.num("charSpacing", 4.0f)));
   const float levelGain = p.num("levelGain", 2.0f);
   const float beatGain = p.num("beatGain", 1.5f);
@@ -157,7 +161,7 @@ void render(PatternCtx& ctx) {
         for (int gx = 0; gx < FONT_W; gx++) {
           if (!((row >> gx) & 1)) continue;
           // Glyph row 0 = top -> cube b = N-1-gy.
-          const int a = gx;
+          const int a = mirror ? N - 1 - gx : gx;
           const int b = N - 1 - gy;
           float col[3];
           glyphColor(c, gx, gy, col);
@@ -194,7 +198,8 @@ void render(PatternCtx& ctx) {
           const uint16_t row = grid[gy];
           for (int gx = 0; gx < FONT_W; gx++) {
             if (!((row >> gx) & 1)) continue;
-            writePixel(buffer, setIdx(c, gx, N - 1 - gy, h), weight, col[0], col[1], col[2]);
+            writePixel(buffer, setIdx(c, mirror ? N - 1 - gx : gx, N - 1 - gy, h), weight,
+                       col[0], col[1], col[2]);
           }
         }
       }
@@ -242,7 +247,7 @@ void render(PatternCtx& ctx) {
           for (int gx = clipL; gx < FONT_W - clipR; gx++) {
             if (!((row >> gx) & 1)) continue;
             const int v = N - 1 - gy;  // glyph top -> high end of vertical axis
-            const int h = gx;
+            const int h = mirror ? N - 1 - gx : gx;
             int cx = 0, cy = 0, cz = 0;
             if (c.axis == 'z') {
               cz = v;

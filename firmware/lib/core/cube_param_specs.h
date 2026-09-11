@@ -403,6 +403,9 @@ static const ParamSpec kSpecs_text_3d[] = {
      "Axis the characters travel or stack along."},
     {"reverse", "Reverse axis direction", 1, 0.0f, 0.0f, 0.0f, 0.0f, "", "",
      "Flip the travel/stack direction."},
+    {"mirror", "Mirror glyphs", 1, 0.0f, 0.0f, 0.0f, 0.0f, "", "",
+     "Flip characters left-right. Orientation rotations can't un-mirror text "
+     "that reads backwards from your viewing side — this can."},
     {"speed", "Base speed", 0, 0.0f, 20.0f, 0.1f, 3.0f, "", "",
      "Scroll/cycle speed before audio boosts."},
     {"charSpacing", "Char spacing (voxels)", 0, 1.0f, 30.0f, 1.0f, 4.0f, "", "",
