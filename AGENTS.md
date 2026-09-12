@@ -12,8 +12,11 @@ truth. It is preserved at git tag `wled-prototype` if you need to consult it.
 
 - Primary: Gledopto GL-C-618WL (ESP32-WROOM, USB-C, onboard PDM mic, relay).
   mDNS `cube.local`.
-- Backup: Gledopto GL-C-309WL (no USB, OTA-only, **no mic** per the
-  manufacturer's manual — the GL-C-310WL is the mic variant). mDNS `cube2.local`.
+- Backup (`cube2.local`): ordered as a Gledopto GL-C-310WL (no USB, OTA-only,
+  I2S mic on SD 26 / WS 5 / SCK 21). It still runs the 0.4.3 `gledopto309`
+  image, whose PDM driver reads a dead line, so it has no reactivity until
+  the `gledopto310` image is flashed (cube-8p2; waiting for 0.5.0 to be
+  proven on the 618 first). `gledopto309` remains for mic-less boards.
 - Any classic ESP32 + an I2S/PDM mic works; pins are `-D` build flags in
   `firmware/platformio.ini`.
 - LEDs: two chains of 500 on separate outputs (`CUBE_LED_SPLIT`).

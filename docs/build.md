@@ -46,10 +46,12 @@ firmware and the boards' recorded configs.
 - **GL-C-618WL**: PDM mic on GPIO32 (data) / GPIO15 (clock), button on 17,
   relay on 18, LED outputs on 16 and 12. Stock WLED config backup in
   `docs/wled-backup/`.
-- **GL-C-309WL**: no USB, no mic, single documented output on 16 (a second on
-  2), spare pads on 12 and 33. Stock config in `docs/wled-backup-309/`. A PDM
-  mic can be added on the spare pads; see the note in `platformio.ini`.
-- **GL-C-310WL**: the 309 with an I2S mic (SD 26 / WS 5 / SCK 21).
+- **GL-C-310WL**: no USB (OTA only), I2S mic (SD 26 / WS 5 / SCK 21), output
+  on 16 (a second on 2), spare pads on 12 and 33. The project's backup cube.
+  Stock config in `docs/wled-backup-309/` (recorded before the model was
+  pinned down; the mic is not configured in it).
+- **GL-C-309WL**: the same board without the mic. A PDM mic can be added on
+  the spare pads; see the note in `platformio.ini`.
 - **Bare ESP32 + INMP441**: see `[env:esp32dev-inmp441]`. You'll want a
   74HCT-type level shifter on the data lines and a 12 V→5 V buck for the
   board.
