@@ -11,8 +11,26 @@ firmware and the boards' recorded configs.
 | WS2811 12 V seed pixels, 50/string | 20 strings (1000 px) | Tiny "seed"/"fairy" pixels on thin wire, not 12 mm bullets. Search *WS2811 12V seed pixel string*. **TODO: link the exact listing used.** |
 | Gledopto GL-C-618WL | 1 | Controller with mic, two outputs, relay, USB-C. [Product page](https://gledopto.com/h-pd-64.html). |
 | 12 V PSU, 10 A+ | 1 | Firmware limiter defaults to 10 A. At the playa this ran from a 12 V battery bank. **TODO: which.** |
-| Frame | 1 | **TODO:** material, dimensions, how the strings are tensioned. |
+| Frame clips | ~40 combs | 3D-printed, translucent PETG. STLs and OpenSCAD source in [`hardware/clips/`](../hardware/clips/). |
 | Wire, connectors | | 3-pin JST-SM pigtails are the norm on pixel strings. Inject power at the start of each 500-pixel chain at least. |
+
+## Frame
+
+The strings *are* the structure. Each vertical string of 100 pixels runs top
+to bottom, U-turns, and comes back up the next column (a long snake), and the
+columns are held 50 mm apart by flat 3D-printed combs with a snap clip every
+50 mm. Clip a comb across a row of strings and it locks their spacing; do it in
+both directions on every layer and the cube holds itself square with almost
+nothing visible once it's lit.
+
+- What didn't work: version one was two acrylic sheets, top and bottom, with
+  holes drilled for the strings, hoping the bottom sheet's weight would keep
+  everything taut. Getting the wires tight in between was fiddly and it looked
+  sloppy.
+- What did: the printed clips. Translucent PETG keeps the shape without
+  obscuring the lights, and the scaffold reads as part of the design.
+- Print instructions, U-vs-C clip notes, and the parametric source are in
+  [`hardware/clips/README.md`](../hardware/clips/README.md).
 
 ## Wiring
 
@@ -20,7 +38,10 @@ firmware and the boards' recorded configs.
   500..999 (`CUBE_LED_SPLIT=500`). Running both halves in the same direction
   from their own start keeps the data path short.
 - **Any physical order works.** Strings can run up/down alternately
-  (serpentine), start from any corner, and the axes can be in any order. The
+  (serpentine, which is how this cube is wired: the first pixel is at the
+  origin, the second is one step up, the tenth starts the next column, the
+  two-hundredth the next slab), start from any corner, and the axes can be
+  in any order. The
   calibration wizard at `/calibrate` figures out the mapping: it lights one
   pixel at a time, you tell it where that pixel is, and after a handful of
   samples the solver has narrowed 192 candidate layouts to one.

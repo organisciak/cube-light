@@ -73,7 +73,7 @@ Three parts: a cube of LEDs, a controller, and this firmware.
     - If you wanted to do 5V instead of 12V, you'd probably get power dropoff with two runs of 500 leds. Easy enough - just have power injection more frequently. The code would need (tiny) modification if you wanted more than two data lines, though.
 - A frame that holds 10 vertical strings of 100 pixels each in a 10×10 grid. Any wiring order works because calibration solves it afterwards. I ran it as a long snake that would go top down on one column, then bottom up on the next, etc. This required a bit of code calibration, because the first pixel of the run was at 0,0,0, but the second pixel is 0,0,1, while 0,1,0 was the 10th pixel and 1,0,0 was the 200th. 
     - What didn't work well: version one had two acrylic sheets - top and bottom plane, with holes drilled out and the lights strung through. I'd hoped the weight of the bottom sheet would pull everything down. However, getting the wires taut in between was tricky, and everything looked sloppy.
-    - What *did* work: 3D-printed clips, keeping all the planes connected. Files are included. I used translucent PETG and the scaffolding clips both kept the shape and didn't obscure the lights, complemented the design with a matrix look.
+    - What *did* work: 3D-printed clips, keeping all the planes connected. STLs, OpenSCAD source and print notes are in [`hardware/clips/`](hardware/clips/). I used translucent PETG and the scaffolding clips both kept the shape and didn't obscure the lights, complemented the design with a matrix look.
 - A 12 V supply. The firmware's power limiter caps total draw (default 10 A); full white on 1000 pixels would be ~15 A, so the software limiter matters (or just get a big boy supply!).
 
 Build notes, photos and the parts list are in
@@ -159,6 +159,7 @@ Open issues live in the repo's `.beads/` tracker.
 - `firmware/src/` — ESP32 glue: networking, web console, mic capture, presets,
   Home Assistant.
 - `firmware/native/` — host harness.
+- `hardware/clips/` — the 3D-printed frame clips (STL + OpenSCAD).
 - `docs/` — flashing runbook, HA integration, build notes, stock-WLED config
   backups for the boards, screenshots.
 
