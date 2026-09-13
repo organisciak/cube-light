@@ -1,16 +1,13 @@
 # cube-light
 
-**A 10×10×10 LED cube that runs itself.** One thousand addressable pixels, an
-ESP32 that lives inside the cube, a phone-friendly console, and a microphone so
-the whole thing dances to whatever is playing. No laptop, no app store, no
-cloud: plug it into 12 V and it boots into a playlist.
+**A 10×10×10 music reactive LED cube.** One thousand addressable pixels, an
+ESP32 microcontroller that lives inside the cube, a phone-friendly console. And 3D snake!
 
 ![3D Pac-Man playing itself](docs/screenshots/pacman-3d.png)
 
-It went to the playa in 2026 and ran for a week off a battery bank, with
-strangers picking patterns from their phones over the cube's own Wi-Fi hotspot.
+It went to the playa in 2026 and ran for a week off in our camp's [speakeasy](https://www.instagram.com/p/DdFiTw2u4o9/).
 This repo is everything needed to build one: the firmware, the console, the
-calibration tools, and (soon) the physical build notes.
+calibration tools, and (soon) the physical build notes. The firmware is all custom, whih allows much more interesting music-reactivity and varied patterning.
 
 ## What it does
 
@@ -62,11 +59,13 @@ Three parts: a cube of LEDs, a controller, and this firmware.
   pixels (the tiny ones on thin wire, not 12 mm bullets) matter: the cube
   reads as points of light in air rather than a wall of bulbs. Search for
   *WS2811 12V seed pixel string*; BTF-Lighting, Ray Wu and the usual
-  AliExpress storefronts all sell 50-pixel strings.
-- A frame that holds 10 vertical strings of 100 pixels each in a 10×10 grid.
-  Any wiring order works because calibration solves it afterwards.
-- A 12 V supply. The firmware's power limiter caps total draw (default 10 A);
-  full white on 1000 pixels would be ~15 A, so the limiter matters.
+  AliExpress storefronts all sell 1000-pixel strings.
+    - Almost certainly, SK6812-style lights with their own white (RGBW) would look better, for a bit more money - here's a listing of ones I've used elsewhere [https://www.aliexpress.us/item/3256805834823384.html]. I haven't tried it with my cube light build, though.
+    - If you wanted to do 5V instead of 12V, you'd probably get power dropoff with two runs of 500 leds. Easy enough - just have power injection more frequently. The code would need (tiny) modification if you wanted more than two data lines, though.
+- A frame that holds 10 vertical strings of 100 pixels each in a 10×10 grid. Any wiring order works because calibration solves it afterwards. I ran it as a long snake that would go top down on one column, then bottom up on the next, etc. This required a bit of code calibration, because the first pixel of the run was at 0,0,0, but the second pixel is 0,0,1, while 0,1,0 was the 10th pixel and 1,0,0 was the 200th. 
+    - What didn't work well: version one had two acrylic sheets - top and bottom plane, with holes drilled out and the lights strung through. I'd hoped the weight of the bottom sheet would pull everything down. However, getting the wires taut in between was tricky, and everything looked sloppy.
+    - What *did* work: 3D-printed clips, keeping all the planes connected. Files are included. I used translucent PETG and the scaffolding clips both kept the shape and didn't obscure the lights, complemented the design with a matrix look.
+- A 12 V supply. The firmware's power limiter caps total draw (default 10 A); full white on 1000 pixels would be ~15 A, so the software limiter matters (or just get a big boy supply!).
 
 Build notes, photos and the parts list are in
 [docs/build.md](docs/build.md).
@@ -75,10 +74,9 @@ Build notes, photos and the parts list are in
 
 | Board | Mic | Flashing | Notes |
 | --- | --- | --- | --- |
-| **Gledopto GL-C-618WL** (recommended) | onboard PDM | USB-C | Two outputs, function button, power relay. The board the project was developed on. |
-| Gledopto GL-C-310WL | onboard I2S | OTA only (no USB) | Mini version. Untested but pins are per the manual. |
-| Gledopto GL-C-309WL | **none** | OTA only (no USB) | Same as the 310 without a mic. Runs ambient patterns; the console says so. |
-| Any classic ESP32 + INMP441 | I2S | USB | Wire your own; pins are build flags. |
+| **Gledopto GL-C-618WL** | onboard PDM | USB-C | The board the project was developed on. This is just a nice enclosure for an ESP-32 with mic and all the things you probably would neglect otherwise (fuse, power relay, step-up). This specific model was probably overkill - don't need the ethernet. Slightly smaller ones that would work from the same company are: GL-C-017WL-D (015 or 016 too) or the GL-C-615WL. I wouldn't expect an ESP8266 to work, I pushed this one pretty far. |
+| Gledopto GL-C-310WL | onboard I2S | OTA only (no USB) | Mini version. These are just great to have around for various projects. Don't do the 309, which is mic-less - and the cube is not as exciting without one. I brought a backup to playa on a 309 without realizing it was the wrong one, glad I didn't have to use it! |
+| Any ESP32 + INMP441 | I2S | USB | Wire your own; pins are build flags. |
 
 Every board is one `[env:...]` block in
 [firmware/platformio.ini](firmware/platformio.ini): LED pins, button, relay,
@@ -154,7 +152,7 @@ Open issues live in the repo's `.beads/` tracker.
   backups for the boards, screenshots.
 
 The original React + Node prototype that streamed frames to stock WLED is
-preserved at git tag `wled-prototype`.
+preserved at git tag `wled-prototype` - one I moved away from that prototyping code, I never looked back, so treat it with a grain of salt.
 
 ## License
 
