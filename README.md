@@ -3,11 +3,16 @@
 **A 10×10×10 music reactive LED cube.** One thousand addressable pixels, an
 ESP32 microcontroller that lives inside the cube, a phone-friendly console. And 3D snake!
 
-![3D Pac-Man playing itself](docs/screenshots/pacman-3d.png)
+| | |
+|---|---|
+| ![The cube hanging in the speakeasy](docs/media/speakeasy.jpg) | ![The cube reacting to music in the speakeasy](docs/media/speakeasy.gif) |
 
 It went to the playa in 2026 and ran for a week off in our camp's [speakeasy](https://www.instagram.com/p/DdFiTw2u4o9/).
+[Here's a minute of it](docs/media/cube-light-playa.mp4) lit up at home and mid-build.
 This repo is everything needed to build one: the firmware, the console, the
-calibration tools, and (soon) the physical build notes. The firmware is all custom, whih allows much more interesting music-reactivity and varied patterning.
+calibration tools, and (soon) the physical build notes. The firmware is all custom, which allows much more interesting music-reactivity and varied patterning.
+
+![3D Pac-Man playing itself](docs/screenshots/pacman-3d.png)
 
 ## What it does
 
@@ -57,9 +62,13 @@ Three parts: a cube of LEDs, a controller, and this firmware.
 
 - **1000 × 12 V WS2811 "seed" pixels**, wired as two chains of 500. Seed
   pixels (the tiny ones on thin wire, not 12 mm bullets) matter: the cube
-  reads as points of light in air rather than a wall of bulbs. Search for
-  *WS2811 12V seed pixel string*; BTF-Lighting, Ray Wu and the usual
-  AliExpress storefronts all sell 1000-pixel strings.
+  reads as points of light in air rather than a wall of bulbs. These are
+  [the RGB ones I used](https://www.aliexpress.us/item/3256807315916397.html);
+  BTF-Lighting, Ray Wu and the usual AliExpress storefronts all sell similar
+  1000-pixel strings under *WS2811 12V seed pixel string*.
+
+  ![WS2811 seed pixel strings on reels](docs/media/seed-pixels.png)
+
     - Almost certainly, SK6812-style lights with their own white (RGBW) would look better, for a bit more money - here's a listing of ones I've used elsewhere [https://www.aliexpress.us/item/3256805834823384.html]. I haven't tried it with my cube light build, though.
     - If you wanted to do 5V instead of 12V, you'd probably get power dropoff with two runs of 500 leds. Easy enough - just have power injection more frequently. The code would need (tiny) modification if you wanted more than two data lines, though.
 - A frame that holds 10 vertical strings of 100 pixels each in a 10×10 grid. Any wiring order works because calibration solves it afterwards. I ran it as a long snake that would go top down on one column, then bottom up on the next, etc. This required a bit of code calibration, because the first pixel of the run was at 0,0,0, but the second pixel is 0,0,1, while 0,1,0 was the 10th pixel and 1,0,0 was the 200th. 
@@ -71,6 +80,8 @@ Build notes, photos and the parts list are in
 [docs/build.md](docs/build.md).
 
 ### 2. The controller
+
+![Gledopto GL-C-310WL](docs/media/gledopto-310wl.png)
 
 | Board | Mic | Flashing | Notes |
 | --- | --- | --- | --- |
@@ -152,7 +163,7 @@ Open issues live in the repo's `.beads/` tracker.
   backups for the boards, screenshots.
 
 The original React + Node prototype that streamed frames to stock WLED is
-preserved at git tag `wled-prototype` - one I moved away from that prototyping code, I never looked back, so treat it with a grain of salt.
+preserved at git tag `wled-prototype` - once I moved away from that prototyping code, I never looked back, so treat it with a grain of salt.
 
 ## License
 
