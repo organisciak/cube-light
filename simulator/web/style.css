@@ -1,0 +1,47 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #000; color: #ddd;
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; color: #f7c948;
+  font: 700 18px monospace; letter-spacing: .2em; text-transform: uppercase; background: #000; }
+#loading[hidden] { display: none; }
+
+#panel { position: fixed; top: 0; left: 0; bottom: 0; width: 320px; overflow-y: auto;
+  background: rgba(10,10,14,.88); backdrop-filter: blur(8px); border-right: 1px solid #222;
+  padding: 12px 14px 20px; transition: transform .25s; }
+#panel.hidden { transform: translateX(-100%); }
+#panel.hidden + #panelShow { display: block; }
+#panel header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+#panel h1 { font: 900 italic 22px/1 "Helvetica Neue", Arial, sans-serif; margin: 0;
+  background: linear-gradient(#fff3a0, #ff9a3c 55%, #ff3c6e); -webkit-background-clip: text; color: transparent; }
+#panel .sub { color: #888; font-size: 11px; flex: 1; }
+#panelToggle { background: none; border: 1px solid #333; color: #aaa; border-radius: 4px; cursor: pointer; }
+section { border-top: 1px solid #222; padding: 10px 0; }
+h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #999; margin: 0 0 8px;
+  display: flex; justify-content: space-between; align-items: center; }
+label { display: block; margin: 4px 0; color: #bbb; }
+label > select, label > input[type=text] { width: 100%; margin-top: 2px; }
+select, input[type=text] { background: #16161c; color: #eee; border: 1px solid #333; border-radius: 4px; padding: 4px 6px; font: inherit; }
+input[type=range] { width: 100%; accent-color: #f7a04a; }
+input[type=color] { width: 100%; height: 26px; border: 1px solid #333; background: #16161c; }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; }
+.chk { display: flex; gap: 6px; align-items: center; }
+.param { margin: 6px 0; }
+.param .hdr { display: flex; justify-content: space-between; font-size: 12px; }
+.param .hdr .val { color: #f7c948; font-variant-numeric: tabular-nums; }
+.param[title] { cursor: help; }
+button { background: #24242e; color: #eee; border: 1px solid #3a3a48; border-radius: 4px; padding: 6px 10px; font: inherit; cursor: pointer; }
+button:hover { background: #30303c; }
+button.mini { padding: 1px 6px; font-size: 10px; }
+button.rec { background: #8a1e2a; border-color: #c33; }
+#recStatus { color: #999; font-size: 11px; margin-top: 6px; min-height: 1.2em; }
+footer { color: #666; font-size: 11px; padding-top: 10px; border-top: 1px solid #222; }
+footer a { color: #f7a04a; text-decoration: none; }
+#audioMeter { display: flex; align-items: flex-end; gap: 8px; height: 26px; margin-top: 6px; }
+#audioMeter .bands { display: flex; gap: 2px; flex: 1; height: 100%; align-items: flex-end; }
+#audioMeter .bands i { flex: 1; background: #f7a04a; height: 2px; border-radius: 1px 1px 0 0; transition: height .05s; }
+#audioMeter .beat { width: 14px; height: 14px; border-radius: 50%; background: #ff3c6e; opacity: .15; }
+#audioMeter .bpm { color: #888; font-size: 11px; width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) { #panel { width: 100%; border-right: 0; } }

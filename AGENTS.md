@@ -33,6 +33,11 @@ truth. It is preserved at git tag `wled-prototype` if you need to consult it.
 - `firmware/native/` — host harness: builds `lib/core` with clang++ and
   streams frames as WLED DNRGB packets (udp/21324) for hardware-free preview.
 - `firmware/platformio.ini` — one `[env:...]` per board with pin flags.
+- `simulator/` — browser simulator. `wasm/bridge.cpp` + `build.sh` compile
+  `lib/core` to WebAssembly with emscripten (`brew install emscripten`; rebuild
+  and commit `web/engine.{js,wasm}` whenever lib/core changes). `web/` is
+  static: three.js from a CDN import map, CRT shaders in `crt.js`, mic
+  analysis in `audio.js`. Serve with `python3 -m http.server 5277`.
 - `docs/` — flashing runbooks, HA integration, stock-WLED config backups,
   screenshots. `docs/on-chip-plan.md` and `docs/controller-plan.md` are
   design notes, the first historical.

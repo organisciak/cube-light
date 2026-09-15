@@ -50,9 +50,11 @@ calibration tools, and (soon) the physical build notes. The firmware is all cust
 | ![Fireworks](docs/screenshots/fireworks-1.png) | ![Fireworks, cyberpunk palette](docs/screenshots/fireworks-2.png) |
 | ![Calibration lighting one LED](docs/screenshots/cube-light-with-mic.png) | ![Calibration samples](docs/screenshots/cube-light-calibration.png) |
 
-*Screenshots are from the retired browser preview; the same patterns run on
-the cube. A browser simulator that renders the real firmware output is on the
-roadmap (below).*
+*Screenshots are from the retired browser preview. For the real thing without
+a cube, the [browser simulator](simulator/) runs the firmware's own pattern
+code (compiled to WebAssembly) and draws it like a 1984 CRT logo card.*
+
+![The simulator: firmware patterns through a CRT shader](docs/media/simulator.jpg)
 
 ## Building one
 
@@ -142,12 +144,22 @@ It streams DNRGB frames to a cube, to stock WLED, or to any receiver that
 speaks the protocol. See [firmware/README.md](firmware/README.md) for the
 engine layout and how to add a pattern.
 
+## Simulator
+
+[`simulator/`](simulator/) is the cube in a browser tab: the firmware engine
+compiled to WebAssembly, rendered in three.js with phosphor persistence, bloom
+and a full CRT pass (scanlines, grille, curvature, aberration, bleed, grain).
+Your laptop mic drives the music-reactive patterns through the same band
+analysis and beat detector the cube uses, or a synthetic 120 BPM groove does.
+It records 5 or 10 second WebM clips, because LED cubes photograph terribly.
+
+```bash
+cd simulator/web && python3 -m http.server 5277   # then open http://127.0.0.1:5277/
+```
+
 ## Roadmap
 
-- **Browser simulator.** A three.js page that renders the firmware's frames
-  with real light bloom, takes your laptop mic, and exports short scrubbable
-  clips, because LED cubes photograph terribly.
-- **Build documentation** with photos, the frame, and a bill of materials.
+- **Build documentation** with more photos and a finished bill of materials.
 - ESP-NOW hardware controller for Snake ([docs/controller-plan.md](docs/controller-plan.md)).
 
 Open issues live in the repo's `.beads/` tracker.
@@ -160,6 +172,7 @@ Open issues live in the repo's `.beads/` tracker.
   Home Assistant.
 - `firmware/native/` — host harness.
 - `hardware/clips/` — the 3D-printed frame clips (STL + OpenSCAD).
+- `simulator/` — browser simulator: the engine as WASM + three.js CRT renderer.
 - `docs/` — flashing runbook, HA integration, build notes, stock-WLED config
   backups for the boards, screenshots.
 

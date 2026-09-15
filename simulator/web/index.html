@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cube-light simulator</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<aside id="panel">
+  <header>
+    <h1>cube-light</h1>
+    <span class="sub">firmware engine, in your browser</span>
+    <button id="panelToggle" title="Hide panel (Tab)">⟨</button>
+  </header>
+
+  <section>
+    <label>Pattern <select id="pattern"></select></label>
+    <div class="row">
+      <label>Up axis <select id="up">
+        <option value="z+">z+</option><option value="z-">z-</option>
+        <option value="x+">x+</option><option value="x-">x-</option>
+        <option value="y+">y+</option><option value="y-">y-</option>
+      </select></label>
+      <label>Audio <select id="audioSrc">
+        <option value="off">off</option>
+        <option value="mic">microphone</option>
+        <option value="fake">synthetic groove</option>
+      </select></label>
+    </div>
+    <div id="audioMeter"><div class="bands"></div><div class="beat"></div><span class="bpm"></span></div>
+  </section>
+
+  <section>
+    <h2>Parameters <button id="resetParams" class="mini">defaults</button></h2>
+    <div id="params"></div>
+  </section>
+
+  <section>
+    <h2>Look</h2>
+    <div id="look"></div>
+    <label class="chk"><input type="checkbox" id="crtOn" checked> CRT treatment</label>
+    <label class="chk"><input type="checkbox" id="autoRotate" checked> Slow orbit</label>
+    <label class="chk"><input type="checkbox" id="showStrings" checked> Show strings</label>
+    <label>Wordmark <input type="text" id="caption" placeholder="CUBE LIGHT" maxlength="24"></label>
+  </section>
+
+  <section>
+    <h2>Capture</h2>
+    <div class="row">
+      <button id="rec5">Record 5 s</button>
+      <button id="rec10">Record 10 s</button>
+      <button id="snap">PNG</button>
+    </div>
+    <div id="recStatus"></div>
+  </section>
+
+  <footer>
+    <a href="https://github.com/organisciak/cube-light">github.com/organisciak/cube-light</a><br>
+    Games: arrows = X/Y, W/S = Z. Drag to orbit, wheel to zoom.
+  </footer>
+</aside>
+
+<div id="loading">loading engine…</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
