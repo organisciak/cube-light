@@ -11,9 +11,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import createCubeEngine from './engine.js?v=20260916c';
-import { PhosphorPass, CRTShader } from './crt.js?v=20260916c';
-import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916c';
+import createCubeEngine from './engine.js?v=20260916d';
+import { PhosphorPass, CRTShader } from './crt.js?v=20260916d';
+import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916d';
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -499,7 +499,7 @@ $('resetLook').onclick = e => { e.preventDefault(); e.stopPropagation(); store.d
 applyLook(store.get('cube-look-v2', {}));
 $('caption').oninput = () => store.set('cube-caption', $('caption').value);
 $('caption').value = store.get('cube-caption', '');
-let capMode = store.get('cube-wordmark', 'on');  // on | fade | off
+let capMode = store.get('cube-wordmark', 'fade');  // on | fade | off
 $('capMode').value = capMode;
 $('capMode').onchange = () => { capMode = $('capMode').value; store.set('cube-wordmark', capMode); captionShownAt = performance.now(); };
 // Burn-out: hold, then a bloom burst while it fades and swells — a little
@@ -513,9 +513,9 @@ function tickCaption(now, isLegend) {
   if (age < HOLD_MS) { m.color.setScalar(1); m.opacity = 1; capMesh.scale.setScalar(1); return; }
   const u = (age - HOLD_MS) / BURST_MS;
   if (u >= 1) { capMesh.visible = false; return; }
-  m.color.setScalar(1 + 11 * Math.sin(Math.PI * Math.min(1, u * 1.6)) * (1 - u));  // flash, then die
+  m.color.setScalar(1 + 5 * Math.sin(Math.PI * Math.min(1, u * 1.6)) * (1 - u));  // flash, then die
   m.opacity = 1 - u * u;
-  capMesh.scale.setScalar(1 + 0.45 * u);
+  capMesh.scale.setScalar(1 + 0.12 * u);
 }
 
 // --------------------------------------------------------------- panel ----

@@ -1,7 +1,7 @@
 # Browser simulator
 
 The firmware's pattern engine, running in your browser, drawn like a 1984
-cathode-tube logo card. Live: <https://cube-light.vercel.app/>.
+cathode-tube logo card. Live: <https://cube.porg.dev/>.
 
 `firmware/lib/core` is dependency-free C++, so it compiles unchanged to
 WebAssembly. The page loads that module, asks it for 1000 RGB values per frame,
@@ -21,7 +21,7 @@ python3 simulator/serve.py        # http://127.0.0.1:5277/
 
 Hosting: the Vercel project `cube-light` is linked to this repo with root
 directory `simulator/web` and no build step, so every push to `main` redeploys
-<https://cube-light.vercel.app/>. `.github/workflows/pages.yml` can do the same
+<https://cube.porg.dev/>. `.github/workflows/pages.yml` can do the same
 for GitHub Pages once Pages is enabled with "GitHub Actions" as the source.
 
 - **Playlist**: on load the page cycles a playlist of presets, exactly as the

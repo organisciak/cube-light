@@ -505,7 +505,7 @@
    "mods": {}
   },
   {
-   "name": "Scan default",
+   "name": "Scan",
    "pattern": "scan",
    "priority": 3,
    "dwellSec": 20,
