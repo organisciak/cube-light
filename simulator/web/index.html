@@ -18,11 +18,6 @@
 <body>
 <canvas id="view"></canvas>
 <button id="panelShow" title="Show controls (Tab)" hidden>☰</button>
-<div id="gameHint" hidden>
-  <b>You're driving the snake.</b>
-  <span><kbd>←</kbd><kbd>→</kbd> left / right &nbsp; <kbd>↑</kbd><kbd>↓</kbd> forward / back &nbsp; <kbd>W</kbd><kbd>S</kbd> up / down</span>
-  <span class="dim">Stop pressing keys for a while and the cube takes over again.</span>
-</div>
 
 <aside id="panel">
   <header>
@@ -40,6 +35,7 @@
       <button id="plPrev" title="Previous preset">⏮</button>
       <button id="plPlay" title="Play / pause the cycle">⏸</button>
       <button id="plNext" title="Next preset">⏭</button>
+      <button id="plShuffle" title="Shuffle, weighted by priority (like the cube)">🔀</button>
       <span id="plNow"></span>
     </div>
     <div id="plList"></div>

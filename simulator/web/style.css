@@ -51,6 +51,7 @@ footer a { color: var(--accent); text-decoration: none; }
 kbd { background: #222; border: 1px solid #444; border-bottom-width: 2px; border-radius: 3px; padding: 0 5px; font: 11px monospace; margin: 0 1px; }
 
 .transport button { flex: 0 0 34px; padding: 4px 0; }
+.transport button.on { background: #2a5aa5; border-color: #4a7ad5; }
 #plNow { flex: 1; color: #f7c948; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #plList { margin: 8px 0; max-height: 160px; overflow-y: auto; border: 1px solid #222; border-radius: 4px; }
 #plList div { padding: 3px 8px; display: flex; justify-content: space-between; cursor: pointer; font-size: 12px; }
@@ -64,10 +65,6 @@ kbd { background: #222; border: 1px solid #444; border-bottom-width: 2px; border
 #audioMeter .beat { width: 14px; height: 14px; border-radius: 50%; background: var(--hot); opacity: .15; }
 #audioMeter .bpm { color: #888; font-size: 11px; width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
 
-#gameHint { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 4;
-  background: rgba(10,10,14,.85); border: 1px solid #333; border-radius: 8px; padding: 10px 16px;
-  display: flex; flex-direction: column; gap: 4px; align-items: center; font-size: 13px; }
-#gameHint .dim { color: #888; font-size: 11px; }
 
 #modal { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; background: rgba(0,0,0,.72); backdrop-filter: blur(4px); }
 #modal .card { width: min(460px, calc(100% - 32px)); background: #101016; border: 1px solid #2a2a36; border-radius: 12px; padding: 22px 24px; }
@@ -76,4 +73,4 @@ kbd { background: #222; border: 1px solid #444; border-bottom-width: 2px; border
 #modal .dim { color: #777; font-size: 11px; }
 #modal .row { margin: 14px 0 6px; flex-wrap: wrap; }
 #modal .row button { padding: 10px 12px; }
-@media (max-width: 700px) { #panel { width: 100%; border-right: 0; } #gameHint { bottom: 12px; width: calc(100% - 24px); } }
+@media (max-width: 700px) { #panel { width: 100%; border-right: 0; } }

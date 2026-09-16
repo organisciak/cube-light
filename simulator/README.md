@@ -27,7 +27,9 @@ enabled with "GitHub Actions" as the source.
 - **Playlist**: on load the page cycles a playlist of presets, exactly as the
   cube does — each preset is a pattern plus params, dwell time and a
   music-reactive flag; reactive presets are skipped while audio is off, and
-  picking a pattern by hand pauses the cycle. `web/presets.json` is the
+  picking a pattern by hand pauses the cycle. Shuffle (on by default) is the
+  cube's weighted pick: each preset's chance is its priority, 0 never
+  auto-plays, no immediate repeats. `web/presets.json` is the
   built-in list; *Import presets…* takes the cube's own export
   (`/api/presets/export` → `{"presets":[...]}`) and keeps it in localStorage.
   The wordmark shows the current preset's name unless you type your own.
@@ -55,9 +57,10 @@ enabled with "GitHub Actions" as the source.
   through the same glow so the card reads like a broadcast ident.
 - **Capture**: Record 5 s / 10 s saves a WebM from the canvas, with the
   microphone mixed in when it's on; PNG saves a still.
-- **Games**: arrow keys (X/Y) and W/S (Z). While you're driving, the orbit
-  stops, the unlit beads brighten so the board reads, and an on-screen hint
-  lists the keys; 12 s without a key hands the snake back to its solver.
+- **Games**: arrow keys (X/Y) and W/S (Z). The wordmark under the cube
+  becomes the legend; while you're driving, the orbit stops and the unlit
+  beads brighten so the board reads. 12 s without a key hands the snake back
+  to its solver.
 - The slow orbit follows the beat: 120 BPM is the base rate, faster music
   spins faster, and each beat nudges it.
 

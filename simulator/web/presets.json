@@ -27,7 +27,7 @@
    "mods": {}
   },
   {
-   "name": "Baller crawl",
+   "name": "Bawler Crawler",
    "pattern": "wander",
    "priority": 3,
    "dwellSec": 20,
@@ -352,7 +352,7 @@
    "mods": {}
   },
   {
-   "name": "Fireworks beat burst",
+   "name": "Fireworks 2 - Beat Burst",
    "pattern": "fireworks",
    "priority": 5,
    "dwellSec": 45,
@@ -375,7 +375,7 @@
    "mods": {}
   },
   {
-   "name": "Floor Waves (tweak more)",
+   "name": "Floor Waves",
    "pattern": "wavy-sheet",
    "priority": 3,
    "dwellSec": 20,

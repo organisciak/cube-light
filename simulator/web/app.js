@@ -188,10 +188,11 @@ const capMesh = new THREE.Mesh(new THREE.PlaneGeometry(12, 3),
 capMesh.position.set(0, -half - 2.6, 0);
 scene.add(capMesh);
 let captionShown = '';
-function drawCaption(text) {
+function drawCaption(text, sub = '') {
   text = (text || '').trim();
-  if (text === captionShown) return;
-  captionShown = text;
+  const key = text + '\n' + sub;
+  if (key === captionShown) return;
+  captionShown = key;
   const c = capCanvas.getContext('2d');
   c.clearRect(0, 0, capCanvas.width, capCanvas.height);
   if (!text) { capTex.needsUpdate = true; capMesh.visible = false; return; }
@@ -205,10 +206,17 @@ function drawCaption(text) {
   let w = c.measureText(T).width;
   if (w > 960) { c.font = `900 italic ${Math.floor(150 * 960 / w)}px "Helvetica Neue", "Arial Black", Arial, sans-serif`; w = c.measureText(T).width; }
   c.fillText(T, 512, 118);
-  for (let i = 0; i < 3; i++) {   // speed stripes, shrinking
-    c.fillStyle = ['#ff2d6b', '#ff7a2a', '#ffb347'][i];
-    const sw = w * (1 - i * 0.22);
-    c.fillRect(512 - sw / 2 + i * 18, 200 + i * 14, sw, 8);
+  if (sub) {
+    // Legend line instead of the stripes: same glow, smaller face.
+    c.font = '700 44px "Helvetica Neue", Arial, sans-serif';
+    c.fillStyle = '#ffd98a';
+    c.fillText(sub, 512, 218);
+  } else {
+    for (let i = 0; i < 3; i++) {   // speed stripes, shrinking
+      c.fillStyle = ['#ff2d6b', '#ff7a2a', '#ffb347'][i];
+      const sw = w * (1 - i * 0.22);
+      c.fillRect(512 - sw / 2 + i * 18, 200 + i * 14, sw, 8);
+    }
   }
   capTex.needsUpdate = true;
 }
@@ -303,7 +311,6 @@ function selectPattern(id, params = {}) {
   buildParams();
   patSel.value = id;
   history.replaceState(null, '', '#' + id);
-  $('gameHint').hidden = true;
   state.lastGameKeyMs = -1e9;
 }
 patSel.onchange = () => { playlist.pause('manual pick'); selectPattern(patSel.value); };
@@ -316,6 +323,7 @@ $('up').onchange = () => { E.setUp($('up').value); };
 // while audio is off, and a manual pattern pick pauses it.
 const playlist = {
   presets: [], i: -1, enabled: true, dwellLeft: 0, source: 'built-in',
+  shuffle: store.get('cube-shuffle', true),
   async load() {
     const imported = store.get('cube-presets', null);
     if (imported) { this.presets = imported.presets; this.source = 'imported'; }
@@ -336,8 +344,18 @@ const playlist = {
     this.dwellLeft = Math.max(4, +p.dwellSec || 20);
     this.render();
   },
+  // Shuffle = the cube's weighted pick: each eligible preset's chance is its
+  // priority (0 never auto-plays), never the one just shown.
+  pickWeighted() {
+    const pool = this.presets.map((p, k) => ({ k, w: +p.priority || 0 })).filter(x => x.w > 0 && x.k !== this.i && this.eligible(this.presets[x.k]));
+    if (!pool.length) return -1;
+    let r = Math.random() * pool.reduce((a, x) => a + x.w, 0);
+    for (const x of pool) { r -= x.w; if (r <= 0) return x.k; }
+    return pool[pool.length - 1].k;
+  },
   advance(dir) {
     if (!this.presets.length) return;
+    if (this.shuffle && dir > 0) { const k = this.pickWeighted(); if (k >= 0) { this.play(k); return; } }
     let j = this.i;
     for (let k = 0; k < this.presets.length; k++) {
       j += dir;
@@ -356,6 +374,7 @@ const playlist = {
   current() { return this.enabled && this.i >= 0 ? this.presets[this.i] : null; },
   render() {
     $('plPlay').textContent = this.enabled ? '⏸' : '▶';
+    $('plShuffle').classList.toggle('on', this.shuffle);
     $('plNow').textContent = this.i >= 0 ? this.presets[this.i].name : (this.presets.length ? 'paused' : 'no presets');
     $('plHint').textContent = `${this.presets.length} presets · ${this.source}`;
     const list = $('plList'); list.innerHTML = '';
@@ -370,6 +389,7 @@ const playlist = {
 };
 $('plPlay').onclick = () => playlist.enabled ? playlist.pause() : playlist.resume();
 $('plNext').onclick = () => { playlist.enabled = true; playlist.advance(1); };
+$('plShuffle').onclick = () => { playlist.shuffle = !playlist.shuffle; store.set('cube-shuffle', playlist.shuffle); playlist.render(); };
 $('plPrev').onclick = () => { playlist.enabled = true; playlist.advance(-1); };
 $('plImport').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
@@ -454,7 +474,6 @@ addEventListener('keydown', e => {
     (state.pattern === 'snake-3d' ? E.snake : E.pacman)(map[e.key]);
     state.lastGameKeyMs = performance.now();
     playlist.pause('playing');
-    $('gameHint').hidden = false;
   }
 });
 
@@ -512,6 +531,7 @@ $('snap').onclick = () => {
 // ------------------------------------------------------------------ loop ----
 let lastFrame = performance.now();
 const amb = new THREE.Color();
+const manualNow = () => GAMES.has(state.pattern) && performance.now() - state.lastGameKeyMs < 12000;
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now;
@@ -537,7 +557,12 @@ function frame(now) {
   // Playlist dwell + wordmark.
   playlist.tick(dt);
   const typed = $('caption').value;
-  drawCaption(typed || playlist.current()?.name || '');
+  if (GAMES.has(state.pattern)) {
+    const name = typed || playlist.current()?.name || (state.pattern === 'snake-3d' ? 'SNAKE' : 'PAC-MAN');
+    drawCaption(name, manualNow() ? 'YOU DRIVE  ·  ← → ↑ ↓  ·  W / S UP · DOWN' : 'PRESS ← → ↑ ↓ OR W / S TO TAKE OVER');
+  } else {
+    drawCaption(typed || playlist.current()?.name || '');
+  }
 
   // Engine -> voxel colours, neighbour spill, room ambience.
   const ptr = E.render(t);
@@ -560,8 +585,7 @@ function frame(now) {
 
   // Games in manual mode: hold the camera still, brighten the unlit beads so
   // the board reads, keep the hint up; hand back after 12 s without a key.
-  const manual = GAMES.has(state.pattern) && now - state.lastGameKeyMs < 12000;
-  if (!manual && !$('gameHint').hidden) $('gameHint').hidden = true;
+  const manual = manualNow();
   voxelMat.uniforms.uFloor.value = manual ? 0.11 : 0.035;
   controls.autoRotate = $('autoRotate').checked && !manual;
   // Orbit speed follows the tempo: 120 BPM = the base rate, with a nudge on
