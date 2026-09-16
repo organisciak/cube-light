@@ -11,9 +11,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import createCubeEngine from './engine.js?v=20260916e';
-import { PhosphorPass, CRTShader } from './crt.js?v=20260916e';
-import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916e';
+import createCubeEngine from './engine.js?v=20260916f';
+import { PhosphorPass, CRTShader } from './crt.js?v=20260916f';
+import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916f';
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -520,7 +520,16 @@ function tickCaption(now, isLegend) {
 }
 
 // --------------------------------------------------------------- panel ----
-function setPanel(hidden) { $('panel').classList.toggle('hidden', hidden); $('panelShow').hidden = !hidden; layout(); }
+function setPanel(hidden) {
+  $('panel').classList.toggle('hidden', hidden); $('panelShow').hidden = !hidden; layout();
+  if (!hidden) { $('panelShow').classList.remove('nudge'); store.set('cube-panel-seen', true); }
+}
+// Phones: start with the panel closed so the cube is the first thing seen,
+// and bounce the show-button until it has been opened once.
+if (innerWidth <= 700) {
+  setPanel(true);
+  if (!store.get('cube-panel-seen', false)) $('panelShow').classList.add('nudge');
+}
 $('frame').value = frameMode;
 $('frame').onchange = () => { frameMode = $('frame').value; store.set('cube-frame', frameMode); layout(); };
 $('panelToggle').onclick = () => setPanel(true);

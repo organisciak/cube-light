@@ -138,4 +138,14 @@ kbd { background: #1a1820; border: 1px solid #000; border-bottom-width: 2px; bor
 #modal .dim { color: var(--dim); font-size: 11px; }
 #modal .row { margin: 16px 0 8px; flex-wrap: wrap; }
 #modal .row button { padding: 10px 12px; }
-@media (max-width: 700px) { #panel { width: 100%; border-right: 0; } #micTag { top: auto; bottom: 14px; right: 12px; } }
+/* Phones: the panel starts closed, sits over the tube translucently when
+   open, and the show-button nudges from the edge until it's been opened. */
+@media (max-width: 700px) {
+  #panel { width: min(88vw, 340px); border-right: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(14,12,16,.72), rgba(8,8,12,.78)); backdrop-filter: blur(10px); }
+  #micTag { top: auto; bottom: 14px; right: 12px; left: 12px; width: auto; }
+  #panelShow { top: 12px; left: 0; border-radius: 0 6px 6px 0; padding: 8px 12px 8px 10px; }
+  #panelShow.nudge { animation: nudge-in 1.6s ease-in-out infinite; }
+  #panelShow.nudge::after { content: " controls"; font: 15px var(--crt); }
+}
+@keyframes nudge-in { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(10px); } 45% { transform: translateX(2px); } 60% { transform: translateX(7px); } }
