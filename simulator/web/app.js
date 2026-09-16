@@ -11,9 +11,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import createCubeEngine from './engine.js?v=20260916f';
-import { PhosphorPass, CRTShader } from './crt.js?v=20260916f';
-import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916f';
+import createCubeEngine from './engine.js?v=20260916g';
+import { PhosphorPass, CRTShader } from './crt.js?v=20260916g';
+import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916g';
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -247,7 +247,10 @@ function layout() {
   const availW = innerWidth - panelW, availH = innerHeight;
   document.body.classList.toggle('framed', frameMode !== 'fill');
   if (frameMode === 'fill') {
-    canvas.style.cssText = '';
+    // Reset only what we set: wiping cssText would also drop the
+    // touch-action:none OrbitControls installs, and finger drags would turn
+    // into page scrolls.
+    for (const k of ['width', 'height', 'left', 'top']) canvas.style[k] = '';
   } else {
     const [aw, ah] = frameMode.split(':').map(Number);
     const pad = 16;
@@ -430,6 +433,8 @@ $('plPlay').onclick = () => playlist.enabled ? playlist.pause() : playlist.resum
 $('plNext').onclick = () => { playlist.enabled = true; playlist.advance(1); };
 $('plShuffle').onclick = () => { playlist.shuffle = !playlist.shuffle; store.set('cube-shuffle', playlist.shuffle); playlist.render(); };
 $('plPrev').onclick = () => { playlist.enabled = true; playlist.advance(-1); };
+$('flNext').onclick = () => { playlist.enabled = true; playlist.advance(1); };
+$('flPrev').onclick = () => { playlist.enabled = true; playlist.advance(-1); };
 $('plImport').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   try {
@@ -522,6 +527,7 @@ function tickCaption(now, isLegend) {
 // --------------------------------------------------------------- panel ----
 function setPanel(hidden) {
   $('panel').classList.toggle('hidden', hidden); $('panelShow').hidden = !hidden; layout();
+  $('flPrev').hidden = $('flNext').hidden = !hidden;
   if (!hidden) { $('panelShow').classList.remove('nudge'); store.set('cube-panel-seen', true); }
 }
 // Phones: start with the panel closed so the cube is the first thing seen,

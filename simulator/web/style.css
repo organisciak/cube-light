@@ -11,7 +11,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #000; color: #e8dcc0;
   font: 12px/1.45 var(--mono); overflow: hidden; }
-#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 body.framed #view { inset: auto; box-shadow: 0 0 0 1px #1a1814; }  /* letterboxed; JS sets size + position */
 #loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--amber);
   font: 28px var(--crt); letter-spacing: .2em; text-transform: uppercase; background: #000; z-index: 20; }
@@ -121,6 +121,8 @@ kbd { background: #1a1820; border: 1px solid #000; border-bottom-width: 2px; bor
 #audioMeter .beat { width: 12px; height: 12px; border-radius: 50%; background: var(--hot); box-shadow: 0 0 8px var(--hot); opacity: .15; }
 #audioMeter .bpm { color: var(--amber); font: 15px var(--crt); width: 58px; text-align: right; font-variant-numeric: tabular-nums; }
 
+button.fl { position: fixed; bottom: 16px; z-index: 4; font-size: 20px; padding: 10px 16px; }
+#flPrev { left: 16px; } #flNext { right: 16px; }
 #micTag { position: fixed; right: 18px; top: 14px; z-index: 4; font: 17px var(--crt); padding: 6px 12px;
   animation: nudge 3s ease-in-out infinite; }
 #micTag u { text-decoration-color: var(--amber); }
@@ -143,7 +145,8 @@ kbd { background: #1a1820; border: 1px solid #000; border-bottom-width: 2px; bor
 @media (max-width: 700px) {
   #panel { width: min(88vw, 340px); border-right: 1px solid var(--line);
     background: linear-gradient(180deg, rgba(14,12,16,.72), rgba(8,8,12,.78)); backdrop-filter: blur(10px); }
-  #micTag { top: auto; bottom: 14px; right: 12px; left: 12px; width: auto; }
+  #micTag { top: auto; bottom: 72px; right: 12px; left: 12px; width: auto; }
+  button.fl { bottom: 12px; }
   #panelShow { top: 12px; left: 0; border-radius: 0 6px 6px 0; padding: 8px 12px 8px 10px; }
   #panelShow.nudge { animation: nudge-in 1.6s ease-in-out infinite; }
   #panelShow.nudge::after { content: " controls"; font: 15px var(--crt); }
