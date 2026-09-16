@@ -1,6 +1,9 @@
 // cube-light browser simulator. The pattern engine is the firmware's own C++
 // (firmware/lib/core) compiled to WebAssembly (engine.js/engine.wasm, built by
 // ../build.sh); this file only draws the 1000 RGB values it produces.
+//
+// The ?v= on the imports (and in index.html) is cache-busting: bump it in
+// both files whenever a module changes, or browsers keep the old one.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -8,9 +11,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import createCubeEngine from './engine.js';
-import { PhosphorPass, CRTShader } from './crt.js';
-import { MicAnalyzer, fakeAudio, BANDS } from './audio.js';
+import createCubeEngine from './engine.js?v=20260916b';
+import { PhosphorPass, CRTShader } from './crt.js?v=20260916b';
+import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916b';
 
 const $ = id => document.getElementById(id);
 const store = {

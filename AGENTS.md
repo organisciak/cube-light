@@ -39,7 +39,10 @@ truth. It is preserved at git tag `wled-prototype` if you need to consult it.
   static: three.js from a CDN import map, CRT shaders in `crt.js`, mic
   analysis in `audio.js`, playlist from `web/presets.json` (cube export
   format). Serve with `python3 simulator/serve.py` (no-cache; plain
-  http.server caches module scripts between edits).
+  http.server caches module scripts between edits). When shipping a change
+  to any `web/*.js`/`style.css`, bump the `?v=` stamp in `index.html` and at
+  the top of `app.js` (three imports) — deployed browsers otherwise keep the
+  old module.
 - `docs/` — flashing runbooks, HA integration, stock-WLED config backups,
   screenshots. `docs/on-chip-plan.md` and `docs/controller-plan.md` are
   design notes, the first historical.
