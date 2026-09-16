@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cube-light</title>
 <meta name="description" content="A 10×10×10 music-reactive LED cube, simulated in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Righteous&family=VT323&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 {
@@ -18,6 +21,7 @@
 <body>
 <canvas id="view"></canvas>
 <button id="panelShow" title="Show controls (Tab)" hidden>☰</button>
+<button id="micTag" hidden title="Switch audio to your microphone">🎤 better with sound — <u>turn on the mic</u></button>
 
 <aside id="panel">
   <header>
@@ -70,24 +74,27 @@
   </section>
 
   <details id="lookSec">
-    <summary><h2>Emulator look <button id="resetLook" class="mini">reset</button></h2></summary>
-    <p class="hint">These change how this page draws the cube: the tube, the glow, the camera. They don't exist on the real cube.</p>
+    <summary><h2>Emulator <button id="resetLook" class="mini">reset</button></h2></summary>
+    <p class="hint">How this page draws the cube: the tube, the glow, the camera. None of it exists on the real cube.</p>
     <div id="look"></div>
     <label class="chk"><input type="checkbox" id="crtOn" checked> CRT treatment</label>
     <label class="chk"><input type="checkbox" id="autoRotate" checked> Slow orbit (follows the beat)</label>
     <label class="chk"><input type="checkbox" id="showStrings" checked> Show strings</label>
     <label>Wordmark <input type="text" id="caption" placeholder="(preset name)" maxlength="24"></label>
-  </details>
-
-  <section>
-    <h2>Capture</h2>
+    <h3>Capture</h3>
+    <label>Frame <select id="frame">
+      <option value="fill">full page</option>
+      <option value="9:16">portrait 9:16</option>
+      <option value="1:1">square 1:1</option>
+      <option value="16:9">landscape 16:9</option>
+    </select></label>
     <div class="row">
       <button id="rec5">Record 5 s</button>
       <button id="rec10">Record 10 s</button>
       <button id="snap">PNG</button>
     </div>
     <div id="recStatus">Recordings include the microphone when it's on.</div>
-  </section>
+  </details>
 
   <footer>
     Drag to orbit, wheel to zoom, <kbd>Tab</kbd> hides this panel.<br>

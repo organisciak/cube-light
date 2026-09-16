@@ -47,7 +47,7 @@ for GitHub Pages once Pages is enabled with "GitHub Actions" as the source.
   the firmware's own `BeatDetector` (in the WASM) for beat and BPM. *Synthetic
   groove* is the native harness's fake audio: a 120 BPM pulse so reactive
   patterns move without a mic.
-- **Emulator look** (collapsed by default, saved in localStorage, with a
+- **Emulator** (collapsed by default, saved in localStorage, with a
   reset): LED gain/size, neighbour spill (lit LEDs tint the unlit beads next
   to them), room light (an inside-out sphere and floor that take on the
   cube's mean colour, so a fully lit cube washes the tube and one pixel
@@ -58,8 +58,10 @@ for GitHub Pages once Pages is enabled with "GitHub Actions" as the source.
   rolling bar. Untick *CRT treatment* for a clean render.
 - **Wordmark**: text under the cube in a block italic with sunset stripes, run
   through the same glow so the card reads like a broadcast ident.
-- **Capture**: Record 5 s / 10 s saves a WebM from the canvas, with the
-  microphone mixed in when it's on; PNG saves a still.
+- **Capture** (inside Emulator): a Frame selector letterboxes the canvas to
+  portrait 9:16, square or 16:9 so recordings come out reel-shaped; Record
+  5 s / 10 s saves a WebM from the canvas, with the microphone or tab audio
+  mixed in when it's on; PNG saves a still.
 - **Games**: arrow keys (X/Y) and W/S (Z). The wordmark under the cube
   becomes the legend; while you're driving, the orbit stops and the unlit
   beads brighten so the board reads. 12 s without a key hands the snake back

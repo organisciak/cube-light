@@ -145,17 +145,18 @@ scene.add(strings);
 // colour, scaled by how much of the cube is lit. One pixel barely registers;
 // every LED at full white washes the whole tube.
 const roomMat = new THREE.ShaderMaterial({
-  uniforms: { uAmb: { value: new THREE.Color(0, 0, 0) }, uRoom: { value: 0.16 } },
+  uniforms: { uAmb: { value: new THREE.Color(0, 0, 0) }, uRoom: { value: 0.1 } },
   vertexShader: `varying vec3 vPos; void main(){ vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
     uniform vec3 uAmb; uniform float uRoom; varying vec3 vPos;
     void main(){
-      // Brightest where the cube is (the origin), fading toward the far walls.
-      float dist = length(vPos) / 120.0;
-      float fall = 1.0 / (1.0 + dist * dist * 2.0);
-      // The floor (below the cube) catches more than the ceiling.
+      // A soft spot on the wall behind the cube (as seen from the camera),
+      // dark toward the periphery; the floor side catches a little more.
+      // The visible wall spans only ~20 degrees of view, so the spot has to be
+      // tight in angle to read as a pool of light rather than a wash.
+      float spot = pow(max(0.0, dot(normalize(vPos), -normalize(cameraPosition))), 70.0);
       float floorBias = 0.7 + 0.6 * smoothstep(20.0, -30.0, vPos.y);
-      gl_FragColor = vec4(uAmb * uRoom * fall * floorBias, 1.0);
+      gl_FragColor = vec4(uAmb * uRoom * (0.06 + 0.94 * spot) * floorBias, 1.0);
     }`,
   side: THREE.BackSide, depthWrite: false,
 });
@@ -169,11 +170,11 @@ const floorMat = new THREE.ShaderMaterial({
     void main(){
       float r = length(vUv - 0.5) * 2.0;
       float pool = smoothstep(1.0, 0.0, r);
-      gl_FragColor = vec4(uAmb * uRoom * 1.6 * pool * pool, 1.0);
+      gl_FragColor = vec4(uAmb * uRoom * 0.9 * pool * pool * pool, 1.0);
     }`,
   transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
 });
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), floorMat);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(34, 34), floorMat);
 floor.rotation.x = -Math.PI / 2; floor.position.y = -half - 4.2;
 scene.add(floor);
 
@@ -232,14 +233,42 @@ const crt = new ShaderPass(CRTShader);
 composer.addPass(crt);
 composer.addPass(new OutputPass());
 
+// Frame: fill the window, or letterbox the canvas to a fixed aspect so a
+// recording comes out portrait (reels) or square. The canvas is centred in
+// whatever the panel leaves free.
+let frameMode = store.get('cube-frame', 'fill');
+function layout() {
+  const panelW = ($('panel').classList.contains('hidden') || innerWidth <= 700) ? 0 : $('panel').offsetWidth;
+  const availW = innerWidth - panelW, availH = innerHeight;
+  document.body.classList.toggle('framed', frameMode !== 'fill');
+  if (frameMode === 'fill') {
+    canvas.style.cssText = '';
+  } else {
+    const [aw, ah] = frameMode.split(':').map(Number);
+    const pad = 16;
+    let h = availH - pad * 2, w = h * aw / ah;
+    if (w > availW - pad * 2) { w = availW - pad * 2; h = w * ah / aw; }
+    canvas.style.width = `${w}px`; canvas.style.height = `${h}px`;
+    canvas.style.left = `${panelW + (availW - w) / 2}px`; canvas.style.top = `${(availH - h) / 2}px`;
+  }
+  resize();
+}
 function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setSize(w, h, false);
   composer.setSize(w, h);
-  camera.aspect = w / h; camera.updateProjectionMatrix();
+  camera.aspect = w / h;
+  // Keep the cube framed when the canvas is tall: widen the vertical fov so
+  // the horizontal extent stays roughly constant.
+  camera.fov = Math.min(70, 32 / Math.min(1, camera.aspect));
+  // Tall frames: pull in (zoom) so the cube fills the width, and centre on
+  // cube + wordmark rather than the cube alone.
+  camera.zoom = camera.aspect < 1 ? Math.pow(1 / camera.aspect, 0.55) : 1;
+  controls.target.y = camera.aspect < 1 ? -1.8 : -0.3;
+  camera.updateProjectionMatrix();
   crt.uniforms.resolution.value.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
 }
-addEventListener('resize', resize);
+addEventListener('resize', layout);
 
 // ------------------------------------------------------------ patterns ----
 const GAMES = new Set(['snake-3d', 'pacman-3d']);
@@ -253,6 +282,10 @@ for (const [label, filter] of [['Light patterns', id => !GAMES.has(id) && !TOOLS
 
 const state = { pattern: 'wavy-sheet', params: {}, t0: performance.now(), audio: 'off', lastGameKeyMs: -1e9 };
 const paramsDiv = $('params');
+// Sliders draw their own filled track (CSS --p); keep it in step with the value.
+function paintRange(el) { el.style.setProperty('--p', `${((el.value - el.min) / (el.max - el.min) * 100).toFixed(2)}%`); }
+function paintAllRanges() { document.querySelectorAll('input[type=range]').forEach(paintRange); }
+document.addEventListener('input', e => { if (e.target.type === 'range') paintRange(e.target); });
 function fmt(v, step) { const d = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3; return (+v).toFixed(d); }
 
 function buildParams() {
@@ -290,6 +323,7 @@ function buildParams() {
     if (s.type !== 1) wrap.appendChild(input);
     paramsDiv.appendChild(wrap);
   }
+  paintAllRanges();
 }
 function setParam(key, v, kind) {
   state.params[key] = v;
@@ -433,7 +467,7 @@ function saveLook() {
   const v = {};
   for (const [, k, obj, , , , prop = 'value'] of look) v[k] = obj[prop];
   v.crt = $('crtOn').checked; v.orbit = $('autoRotate').checked; v.strings = $('showStrings').checked;
-  store.set('cube-look', v);
+  store.set('cube-look-v2', v);
 }
 function applyLook(v) {
   for (const [, k, obj, , , step, prop = 'value'] of look) {
@@ -442,6 +476,7 @@ function applyLook(v) {
   if ('crt' in v) { $('crtOn').checked = v.crt; crt.enabled = v.crt; }
   if ('orbit' in v) { $('autoRotate').checked = v.orbit; controls.autoRotate = v.orbit; }
   if ('strings' in v) { $('showStrings').checked = v.strings; strings.visible = v.strings; }
+  paintAllRanges();
 }
 for (const [label, key, obj, min, max, step, prop = 'value'] of look) {
   const wrap = document.createElement('div'); wrap.className = 'param';
@@ -455,13 +490,15 @@ for (const [label, key, obj, min, max, step, prop = 'value'] of look) {
 $('crtOn').onchange = () => { crt.enabled = $('crtOn').checked; saveLook(); };
 $('autoRotate').onchange = () => { controls.autoRotate = $('autoRotate').checked; saveLook(); };
 $('showStrings').onchange = () => { strings.visible = $('showStrings').checked; saveLook(); };
-$('resetLook').onclick = e => { e.preventDefault(); e.stopPropagation(); store.del('cube-look'); applyLook(lookDefaults); };
-applyLook(store.get('cube-look', {}));
+$('resetLook').onclick = e => { e.preventDefault(); e.stopPropagation(); store.del('cube-look-v2'); applyLook(lookDefaults); };
+applyLook(store.get('cube-look-v2', {}));
 $('caption').oninput = () => store.set('cube-caption', $('caption').value);
 $('caption').value = store.get('cube-caption', '');
 
 // --------------------------------------------------------------- panel ----
-function setPanel(hidden) { $('panel').classList.toggle('hidden', hidden); $('panelShow').hidden = !hidden; }
+function setPanel(hidden) { $('panel').classList.toggle('hidden', hidden); $('panelShow').hidden = !hidden; layout(); }
+$('frame').value = frameMode;
+$('frame').onchange = () => { frameMode = $('frame').value; store.set('cube-frame', frameMode); layout(); };
 $('panelToggle').onclick = () => setPanel(true);
 $('panelShow').onclick = () => setPanel(false);
 addEventListener('keydown', e => {
@@ -493,10 +530,12 @@ async function setAudio(v) {
   }
   $('audioSrc').value = state.audio;
   $('tabHint').hidden = state.audio !== 'tab';
+  $('micTag').hidden = LIVE.has(state.audio);
   // Tab capture must be re-chosen each visit (the browser won't auto-share).
   store.set('cube-audio', state.audio === 'tab' ? 'off' : state.audio);
 }
 mic.onended = () => { if (state.audio === 'tab') setAudio('off'); };  // user hit "Stop sharing"
+$('micTag').onclick = () => setAudio('mic');
 $('audioSrc').onchange = () => setAudio($('audioSrc').value);
 
 // ---------------------------------------------------------------- capture ----
@@ -610,7 +649,7 @@ if (fromHash) { playlist.enabled = false; selectPattern(location.hash.slice(1));
 else if (playlist.presets.length) playlist.advance(1);
 else selectPattern('wavy-sheet', { palette: 'sunset' });
 playlist.render();
-resize();
+layout();
 $('loading').hidden = true;
 requestAnimationFrame(frame);
 
@@ -621,3 +660,4 @@ if (remembered && remembered !== 'mic') { $('modal').hidden = true; setAudio(rem
 $('modalMic').onclick = async () => { $('modal').hidden = true; await setAudio('mic'); };
 $('modalFake').onclick = () => { $('modal').hidden = true; setAudio('fake'); };
 $('modalOff').onclick = () => { $('modal').hidden = true; setAudio('off'); };
+if (!$('modal').hidden) $('micTag').hidden = true;  // the modal is already asking
