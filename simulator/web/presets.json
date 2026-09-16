@@ -403,7 +403,7 @@
    "mods": {}
   },
   {
-   "name": "Good Bar EQ",
+   "name": "Bars",
    "pattern": "bar-eq",
    "priority": 4,
    "dwellSec": 20,

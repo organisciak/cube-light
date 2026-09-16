@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Righteous&family=VT323&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260916b">
+<link rel="stylesheet" href="style.css?v=20260916c">
 <script type="importmap">
 {
   "imports": {
@@ -80,7 +80,12 @@
     <label class="chk"><input type="checkbox" id="crtOn" checked> CRT treatment</label>
     <label class="chk"><input type="checkbox" id="autoRotate" checked> Slow orbit (follows the beat)</label>
     <label class="chk"><input type="checkbox" id="showStrings" checked> Show strings</label>
-    <label>Wordmark <input type="text" id="caption" placeholder="(preset name)" maxlength="24"></label>
+    <label>Wordmark <select id="capMode">
+      <option value="on">show the preset name</option>
+      <option value="fade">show, then burn out after 2 s</option>
+      <option value="off">off</option>
+    </select></label>
+    <label>Custom wordmark text <input type="text" id="caption" placeholder="(uses the preset name)" maxlength="24"></label>
     <h3>Capture</h3>
     <label>Frame <select id="frame">
       <option value="fill">full page</option>
@@ -119,6 +124,6 @@
 </div>
 
 <div id="loading">loading…</div>
-<script type="module" src="app.js?v=20260916b"></script>
+<script type="module" src="app.js?v=20260916c"></script>
 </body>
 </html>

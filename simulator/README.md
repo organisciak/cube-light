@@ -32,7 +32,9 @@ for GitHub Pages once Pages is enabled with "GitHub Actions" as the source.
   auto-plays, no immediate repeats. `web/presets.json` is the
   built-in list; *Import presets…* takes the cube's own export
   (`/api/presets/export` → `{"presets":[...]}`) and keeps it in localStorage.
-  The wordmark shows the current preset's name unless you type your own.
+  The wordmark shows the current preset's name unless you type your own;
+  it can also be switched off, or set to burn out 2 s after each preset
+  change (a bloom flash while it fades and swells). Game legends always show.
 - **Onboarding**: a first-visit modal offers the microphone (the click is the
   user gesture WebAudio needs), a synthetic beat, or silence; the choice is
   remembered.

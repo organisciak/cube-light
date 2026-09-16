@@ -11,9 +11,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import createCubeEngine from './engine.js?v=20260916b';
-import { PhosphorPass, CRTShader } from './crt.js?v=20260916b';
-import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916b';
+import createCubeEngine from './engine.js?v=20260916c';
+import { PhosphorPass, CRTShader } from './crt.js?v=20260916c';
+import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916c';
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -192,11 +192,13 @@ const capMesh = new THREE.Mesh(new THREE.PlaneGeometry(12, 3),
 capMesh.position.set(0, -half - 2.6, 0);
 scene.add(capMesh);
 let captionShown = '';
+let captionShownAt = 0;  // for the burn-out mode
 function drawCaption(text, sub = '') {
   text = (text || '').trim();
   const key = text + '\n' + sub;
   if (key === captionShown) return;
   captionShown = key;
+  captionShownAt = performance.now();
   const c = capCanvas.getContext('2d');
   c.clearRect(0, 0, capCanvas.width, capCanvas.height);
   if (!text) { capTex.needsUpdate = true; capMesh.visible = false; return; }
@@ -497,6 +499,24 @@ $('resetLook').onclick = e => { e.preventDefault(); e.stopPropagation(); store.d
 applyLook(store.get('cube-look-v2', {}));
 $('caption').oninput = () => store.set('cube-caption', $('caption').value);
 $('caption').value = store.get('cube-caption', '');
+let capMode = store.get('cube-wordmark', 'on');  // on | fade | off
+$('capMode').value = capMode;
+$('capMode').onchange = () => { capMode = $('capMode').value; store.set('cube-wordmark', capMode); captionShownAt = performance.now(); };
+// Burn-out: hold, then a bloom burst while it fades and swells — a little
+// supernova. Drives the wordmark material each frame.
+const HOLD_MS = 2000, BURST_MS = 750;
+function tickCaption(now, isLegend) {
+  const m = capMesh.material;
+  if (!capMesh.visible) return;
+  if (capMode !== 'fade' || isLegend) { m.color.setScalar(1); m.opacity = 1; capMesh.scale.setScalar(1); return; }
+  const age = now - captionShownAt;
+  if (age < HOLD_MS) { m.color.setScalar(1); m.opacity = 1; capMesh.scale.setScalar(1); return; }
+  const u = (age - HOLD_MS) / BURST_MS;
+  if (u >= 1) { capMesh.visible = false; return; }
+  m.color.setScalar(1 + 11 * Math.sin(Math.PI * Math.min(1, u * 1.6)) * (1 - u));  // flash, then die
+  m.opacity = 1 - u * u;
+  capMesh.scale.setScalar(1 + 0.45 * u);
+}
 
 // --------------------------------------------------------------- panel ----
 function setPanel(hidden) { $('panel').classList.toggle('hidden', hidden); $('panelShow').hidden = !hidden; layout(); }
@@ -603,12 +623,14 @@ function frame(now) {
   // Playlist dwell + wordmark.
   playlist.tick(dt);
   const typed = $('caption').value;
-  if (GAMES.has(state.pattern)) {
+  const isLegend = GAMES.has(state.pattern);
+  if (isLegend) {  // the key legend always shows, whatever the wordmark mode
     const name = typed || playlist.current()?.name || (state.pattern === 'snake-3d' ? 'SNAKE' : 'PAC-MAN');
     drawCaption(name, manualNow() ? 'YOU DRIVE  ·  ← → ↑ ↓  ·  W / S UP · DOWN' : 'PRESS ← → ↑ ↓ OR W / S TO TAKE OVER');
   } else {
-    drawCaption(typed || playlist.current()?.name || '');
+    drawCaption(capMode === 'off' ? '' : (typed || playlist.current()?.name || ''));
   }
+  tickCaption(now, isLegend);
 
   // Engine -> voxel colours, neighbour spill, room ambience.
   const ptr = E.render(t);
@@ -644,6 +666,11 @@ function frame(now) {
   capMesh.quaternion.copy(camera.quaternion);
   composer.render();
 }
+
+// Console hook for poking at state without a bundler: cubeDebug().
+window.cubeDebug = () => ({ pattern: state.pattern, audio: state.audio, capMode, captionShown, captionAge: performance.now() - captionShownAt,
+  capVisible: capMesh.visible, capOpacity: capMesh.material.opacity, capColor: capMesh.material.color.r, playlist: { i: playlist.i, enabled: playlist.enabled, shuffle: playlist.shuffle } });
+window.cubeDebug.setCaptionAge = ms => { captionShownAt = performance.now() - ms; capMesh.visible = true; };
 
 // --------------------------------------------------------------- startup ----
 await playlist.load();
