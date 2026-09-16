@@ -1,15 +1,14 @@
 # Frame clips (3D-printed)
 
-The cube's frame is nothing but these: flat printed "combs" that clip the seed
-pixel strings into a 50 mm grid. Each comb is a thin bar with a snap clip every
-50 mm; the clips grab the string's wire between beads, and the beads themselves
+The original cube used the weight of the hanging strings and a bottom clear acrylic plate to keep the planes aligned - it didn't work well.
+
+The improvement was to 3D print translucent combs of spaced clips to add a matrix scaffolding to the cube.
+Each comb is a thin bar with a snap clip every 50 mm; the clips grab the string's wire between beads, and the beads themselves
 (bigger than any pocket) act as position stops. Stack combs across rows and
 columns and the strings hold each other square. Translucent PETG nearly
 vanishes when the cube is lit, and what you do see reads as a matrix scaffold.
 
-These are the **v6** production parts, the iteration that went to the playa.
-Earlier versions and the full design history live in the author's
-3D-print repo (`projects/bead-light-clips/`).
+The combs had either 5 or 6 clips on them - my 3d printer (nor most?) doesn't have a bed big enough to print a single comb that spans the full cube widths, so instead I had LEDs 1-5 clipped, then 5-10.
 
 | File | Clips | Length | Shape |
 | --- | --- | --- | --- |
