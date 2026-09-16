@@ -51,8 +51,9 @@ calibration tools, and (soon) the physical build notes. The firmware is all cust
 | ![Calibration lighting one LED](docs/screenshots/cube-light-with-mic.png) | ![Calibration samples](docs/screenshots/cube-light-calibration.png) |
 
 *Screenshots are from the retired browser preview. For the real thing without
-a cube, the [browser simulator](simulator/) runs the firmware's own pattern
-code (compiled to WebAssembly) and draws it like a 1984 CRT logo card.*
+a cube, the [browser simulator](https://cube-light.vercel.app/) runs the
+firmware's own pattern code (compiled to WebAssembly) and draws it like a
+1984 CRT logo card.*
 
 ![The simulator: firmware patterns through a CRT shader](docs/media/simulator.jpg)
 
@@ -146,6 +147,7 @@ engine layout and how to add a pattern.
 
 ## Simulator
 
+**Live at [cube-light.vercel.app](https://cube-light.vercel.app/).**
 [`simulator/`](simulator/) is the cube in a browser tab: the firmware engine
 compiled to WebAssembly, rendered in three.js with phosphor persistence, bloom
 and a full CRT pass (scanlines, grille, curvature, aberration, bleed, grain).
