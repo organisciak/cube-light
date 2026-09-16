@@ -39,7 +39,10 @@ enabled with "GitHub Actions" as the source.
 
 - **Pattern** and its parameters: the same knobs as the cube's console.
   `#pattern-id` in the URL selects one on load.
-- **Audio**: *microphone* runs the firmware's band analysis (8 log-spaced
+- **Audio**: *tab / system audio* captures the clean digital feed of a tab
+  that's playing music (pick it in the share dialog and tick *Share audio*;
+  on Windows/ChromeOS the whole screen's audio works too), no room, no mic
+  colouring, and recordings get it. *microphone* runs the firmware's band analysis (8 log-spaced
   bands, per-band floor/peak tracking) in WebAudio and feeds the bass band to
   the firmware's own `BeatDetector` (in the WASM) for beat and BPM. *Synthetic
   groove* is the native harness's fake audio: a 120 BPM pulse so reactive

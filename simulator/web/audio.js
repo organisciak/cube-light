@@ -16,8 +16,23 @@ export class MicAnalyzer {
     this.levelPeak = 0.01; this.levelOut = 0;
     this.bass = 0; this.ctx = null; this.analyser = null; this.stream = null;
   }
-  async start() {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  // kind: 'mic' (getUserMedia) or 'tab' (getDisplayMedia with audio — the
+  // clean digital feed of whatever a browser tab, or on some platforms the
+  // whole system, is playing; no room, no mic colouration).
+  async start(kind = 'mic') {
+    if (kind === 'tab') {
+      const s = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: 320, height: 180, frameRate: 1 },  // required by the API; dropped below
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        preferCurrentTab: false, selfBrowserSurface: 'exclude', systemAudio: 'include',
+      });
+      s.getVideoTracks().forEach(t => { t.stop(); s.removeTrack(t); });
+      if (!s.getAudioTracks().length) throw new Error('no audio was shared — pick a tab or screen and tick "Share audio"');
+      s.getAudioTracks()[0].onended = () => this.onended?.();
+      this.stream = s;
+    } else {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    }
     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     const src = this.ctx.createMediaStreamSource(this.stream);
     this.analyser = this.ctx.createAnalyser();

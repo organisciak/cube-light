@@ -483,16 +483,20 @@ const audioFrame = { level: 0, bands: new Float32Array(BANDS), beat: 0, bpm: 0 }
 const meterBands = $('audioMeter').querySelector('.bands');
 for (let i = 0; i < BANDS; i++) meterBands.appendChild(document.createElement('i'));
 const meterBeat = $('audioMeter').querySelector('.beat'), meterBpm = $('audioMeter').querySelector('.bpm');
+const LIVE = new Set(['mic', 'tab']);
 async function setAudio(v) {
-  if (state.audio === 'mic') mic.stop();
+  if (LIVE.has(state.audio)) mic.stop();
   state.audio = v;
-  if (v === 'mic') {
-    try { await mic.start(); }
-    catch (err) { alert('Microphone unavailable: ' + err.message); state.audio = 'off'; }
+  if (LIVE.has(v)) {
+    try { await mic.start(v); }
+    catch (err) { alert((v === 'tab' ? 'Tab audio unavailable: ' : 'Microphone unavailable: ') + err.message); state.audio = 'off'; }
   }
   $('audioSrc').value = state.audio;
-  store.set('cube-audio', state.audio);
+  $('tabHint').hidden = state.audio !== 'tab';
+  // Tab capture must be re-chosen each visit (the browser won't auto-share).
+  store.set('cube-audio', state.audio === 'tab' ? 'off' : state.audio);
 }
+mic.onended = () => { if (state.audio === 'tab') setAudio('off'); };  // user hit "Stop sharing"
 $('audioSrc').onchange = () => setAudio($('audioSrc').value);
 
 // ---------------------------------------------------------------- capture ----
@@ -501,7 +505,7 @@ function record(seconds) {
   if (recorder) return;
   const stream = canvas.captureStream(30);
   // Mix the mic into the recording so exported clips carry the music.
-  if (state.audio === 'mic' && mic.stream) for (const t of mic.stream.getAudioTracks()) stream.addTrack(t);
+  if (LIVE.has(state.audio) && mic.stream) for (const t of mic.stream.getAudioTracks()) stream.addTrack(t);
   const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp9', 'video/webm', 'video/mp4'].find(m => MediaRecorder.isTypeSupported(m));
   recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
   const chunks = [];
@@ -519,7 +523,7 @@ function record(seconds) {
   recorder.start();
   for (const b of [$('rec5'), $('rec10')]) b.classList.add('rec');
   let left = seconds;
-  const tick = () => { $('recStatus').textContent = `recording… ${left}s${state.audio === 'mic' ? ' (with mic)' : ''}`; if (left-- > 0) setTimeout(tick, 1000); else recorder.stop(); };
+  const tick = () => { $('recStatus').textContent = `recording… ${left}s${LIVE.has(state.audio) ? ' (with audio)' : ''}`; if (left-- > 0) setTimeout(tick, 1000); else recorder.stop(); };
   tick();
 }
 $('rec5').onclick = () => record(5);
@@ -538,7 +542,7 @@ function frame(now) {
   const t = (now - state.t0) / 1000;
 
   // Audio -> engine.
-  if (state.audio === 'mic') {
+  if (LIVE.has(state.audio)) {
     const a = mic.update();
     if (a) { E.beatFeed(a.bass, now | 0); audioFrame.level = a.level; audioFrame.bands.set(a.bands); }
     E.beatDecay(dt);
