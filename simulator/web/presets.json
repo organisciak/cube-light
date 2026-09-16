@@ -1,21 +1,703 @@
 {
-  "version": 1,
-  "presets": [
-    {"name": "Sunset sheet", "pattern": "wavy-sheet", "priority": 4, "dwellSec": 24, "reactive": true,
-     "params": {"palette": "sunset", "amp": 1.4, "speed": 0.5}},
-    {"name": "Planes", "pattern": "rotating-planes", "priority": 4, "dwellSec": 20, "reactive": false,
-     "params": {"palette": "cyberpunk"}},
-    {"name": "Rez tunnel", "pattern": "rez-tunnel", "priority": 3, "dwellSec": 20, "reactive": true,
-     "params": {"palette": "rainbow"}},
-    {"name": "Double helix", "pattern": "double-helix", "priority": 3, "dwellSec": 18, "reactive": true,
-     "params": {"palette": "bi_fire"}},
-    {"name": "Arctic rain", "pattern": "rain", "priority": 3, "dwellSec": 18, "reactive": false,
-     "params": {"palette": "arctic"}},
-    {"name": "Spectrum discs", "pattern": "spectrum-discs", "priority": 3, "dwellSec": 16, "reactive": true,
-     "params": {"palette": "spectrum"}},
-    {"name": "Fireworks", "pattern": "fireworks", "priority": 2, "dwellSec": 16, "reactive": false,
-     "params": {"palette": "cycle"}},
-    {"name": "Pac-Man", "pattern": "pacman-3d", "priority": 2, "dwellSec": 30, "reactive": false,
-     "params": {}}
-  ]
+ "version": 1,
+ "presets": [
+  {
+   "name": "4 Plane Rainbow",
+   "pattern": "rotating-planes",
+   "priority": 1,
+   "dwellSec": 20,
+   "params": {
+    "speed": 0.05,
+    "sweepSpeed": 0.12,
+    "thickness": 0.4,
+    "planes": 4,
+    "palette": "rainbow",
+    "paletteSolo": false,
+    "soloSpeed": 0.05,
+    "r": 80,
+    "g": 200,
+    "b": 255,
+    "audioGain": 1.5,
+    "levelSpeedGain": 2.4,
+    "beatSpeedGain": 5.9,
+    "levelSweepGain": 2.5,
+    "beatSweepGain": 6
+   },
+   "reactive": true,
+   "mods": {}
+  },
+  {
+   "name": "Baller crawl",
+   "pattern": "wander",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "speed": 6,
+    "speedFrom": "bpm",
+    "speedGain": 0.5,
+    "turnChance": 0.25,
+    "beatTurn": true,
+    "beatAberration": 1.25,
+    "tail": 4,
+    "palette": "none",
+    "paletteSolo": false,
+    "soloSpeed": 0.005,
+    "r": 255,
+    "g": 255,
+    "b": 255
+   },
+   "reactive": true,
+   "mods": {
+    "beatAberration": {
+     "mode": "pingpong",
+     "min": 0,
+     "max": 4,
+     "rate": 1,
+     "step": 0.8
+    }
+   }
+  },
+  {
+   "name": "Bang from the lounge",
+   "pattern": "text-3d",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "mode": "stack",
+    "text": "Bang",
+    "axis": "y",
+    "reverse": false,
+    "mirror": true,
+    "speed": 0.5,
+    "charSpacing": 10,
+    "stackGap": "blank",
+    "levelGain": 5.9,
+    "beatGain": 6,
+    "throbDepth": 0.45,
+    "throbAttack": 0.06,
+    "throbRelease": 0.2,
+    "highlightLead": true,
+    "trailDim": 1,
+    "leadAt": "front",
+    "clipL": 0,
+    "clipR": 1,
+    "palette": "fire",
+    "paletteSolo": false,
+    "soloSpeed": 0.05,
+    "r": 255,
+    "g": 240,
+    "b": 200
+   },
+   "reactive": true,
+   "mods": {}
+  },
+  {
+   "name": "Base Orbit",
+   "pattern": "orbit",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "count": 4,
+    "radius": 3.4,
+    "speed": 0.4,
+    "trail": 10,
+    "precess": 0.05,
+    "beatSpeed": 1.5,
+    "palette": "spectrum",
+    "headBright": 1
+   }
+  },
+  {
+   "name": "Beat drops keep falling on my head",
+   "pattern": "rain",
+   "priority": 4,
+   "dwellSec": 20,
+   "params": {
+    "spawnRate": 1,
+    "fallSpeed": 2,
+    "speedJitter": 0.05,
+    "trail": 0.52,
+    "palette": "cycle",
+    "pos": 0.76,
+    "jitter": 0.29,
+    "audioBoost": 0,
+    "beatSpawn": 20,
+    "speedFrom": "bpm",
+    "speedGain": 1.7
+   },
+   "reactive": true,
+   "mods": {}
+  },
+  {
+   "name": "Biworm",
+   "pattern": "rail-grind",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "axis": "spin",
+    "spinSpeed": 12,
+    "speed": 6,
+    "speedFrom": "bpm",
+    "speedGain": 1.7,
+    "curviness": 0.25,
+    "turnLen": 20,
+    "vertAmount": 0.75,
+    "camLag": 0.4,
+    "jagGain": 1.4,
+    "beatKink": 6,
+    "depthStep": 1.75,
+    "fade": 0.88,
+    "glow": 1,
+    "palette": "bi_fire",
+    "paletteSolo": false,
+    "soloSpeed": 0.05,
+    "r": 80,
+    "g": 220,
+    "b": 255
+   },
+   "reactive": true,
+   "mods": {}
+  },
+  {
+   "name": "Bounce ball",
+   "pattern": "bounce",
+   "priority": 2,
+   "dwellSec": 20,
+   "params": {
+    "radius": 1.5,
+    "speed": 10.5,
+    "rings": 5,
+    "meridians": 6,
+    "spinSpeed": 0,
+    "beatPulse": 0,
+    "palette": "cycle",
+    "r": 255,
+    "g": 255,
+    "b": 255
+   },
+   "mods": {}
+  },
+  {
+   "name": "Bowflex",
+   "pattern": "wavy-sheet",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "axis": "z",
+    "baseZ": 2,
+    "amp": 1.7,
+    "speed": 0.2,
+    "wavelength": 11,
+    "thickness": 0.7,
+    "edgeSoft": 1,
+    "audioDecay": 0.85,
+    "levelGain": 3.6,
+    "bassGain": 0.9,
+    "midGain": 0,
+    "trebleGain": 0.05,
+    "beatGain": 0,
+    "rotateSpeed": 0.025,
+    "rotateAudio": true,
+    "rotateLevelGain": 3.4,
+    "rotateBeatGain": 6,
+    "palette": "rainbow",
+    "r": 220,
+    "g": 220,
+    "b": 255
+   },
+   "reactive": true,
+   "mods": {}
+  },
+  {
+   "name": "Brian",
+   "pattern": "rotating-planes",
+   "priority": 2,
+   "dwellSec": 20,
+   "params": {
+    "speed": 0.28,
+    "sweepSpeed": 0.4,
+    "thickness": 0.7,
+    "planes": 2,
+    "palette": "cycle",
+    "paletteSolo": false,
+    "soloSpeed": 0.05,
+    "r": 80,
+    "g": 200,
+    "b": 255,
+    "audioGain": 1.4,
+    "levelSpeedGain": 2.1,
+    "beatSpeedGain": 4.3,
+    "levelSweepGain": 2.3,
+    "beatSweepGain": 2.7
+   },
+   "reactive": true,
+   "mods": {}
+  },
+  {
+   "name": "Cube 1",
+   "pattern": "spin-cube",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "size": 8.25,
+    "speedA": 0.09,
+    "speedB": 0.07,
+    "breathe": 0.32,
+    "beatKick": 4.8,
+    "palette": "none",
+    "r": 0,
+    "g": 172,
+    "b": 208,
+    "cornerBoost": 2
+   },
+   "reactive": true,
+   "mods": {
+    "size": {
+     "mode": "pingpong",
+     "min": 2,
+     "max": 9,
+     "rate": 0.25,
+     "step": 1
+    }
+   }
+  },
+  {
+   "name": "Cycling Spirals",
+   "pattern": "spiral",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "axis": "cycle",
+    "speed": 18,
+    "layerDelay": 0.14,
+    "twist": 1,
+    "tailDim": 0.2,
+    "palette": "cycle",
+    "colorBy": "position",
+    "levelGain": 3.7,
+    "sat": 1
+   },
+   "mods": {}
+  },
+  {
+   "name": "Double Plane",
+   "pattern": "rotating-planes",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "speed": 0.14,
+    "sweepSpeed": 0.15,
+    "thickness": 0.6,
+    "planes": 2,
+    "palette": "cycle",
+    "r": 80,
+    "g": 200,
+    "b": 255,
+    "audioGain": 1.5,
+    "levelSpeedGain": 1.3,
+    "beatSpeedGain": 3.8,
+    "levelSweepGain": 1.2,
+    "beatSweepGain": 4.3
+   },
+   "mods": {},
+   "reactive": false
+  },
+  {
+   "name": "Fire Sheets",
+   "pattern": "wavy-sheet",
+   "priority": 5,
+   "dwellSec": 40,
+   "params": {
+    "axis": "z",
+    "baseZ": 4,
+    "amp": 0.9,
+    "speed": 0.2,
+    "wavelength": 11,
+    "thickness": 0.7,
+    "levelGain": 3.6,
+    "bassGain": 0,
+    "midGain": 0,
+    "trebleGain": 0,
+    "beatGain": 0,
+    "rotateSpeed": 0.19,
+    "rotateAudio": true,
+    "rotateLevelGain": 0,
+    "rotateBeatGain": 2.6,
+    "palette": "fire",
+    "r": 220,
+    "g": 220,
+    "b": 255
+   },
+   "mods": {},
+   "reactive": false
+  },
+  {
+   "name": "Fireworks 1",
+   "pattern": "fireworks",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "palette": "cycle",
+    "launchInterval": 1.2,
+    "flightTime": 0.55,
+    "particles": 70,
+    "burstSpeed": 9.5,
+    "gravity": 3.8,
+    "drag": 1.4,
+    "lifetime": 1.1,
+    "rocketBrightness": 0.95,
+    "beatLaunch": false,
+    "levelBoost": 1.85
+   },
+   "mods": {}
+  },
+  {
+   "name": "Fireworks beat burst",
+   "pattern": "fireworks",
+   "priority": 5,
+   "dwellSec": 45,
+   "params": {
+    "palette": "cycle",
+    "launchInterval": 1.2,
+    "flightTime": 1.25,
+    "particles": 70,
+    "burstSpeed": 9.5,
+    "gravity": 3.8,
+    "drag": 1.4,
+    "lifetime": 1.1,
+    "rocketBrightness": 0.35,
+    "burstOn": "beat",
+    "popLevelRise": 0.3,
+    "beatLaunch": true,
+    "levelBoost": 1.85
+   },
+   "reactive": true,
+   "mods": {}
+  },
+  {
+   "name": "Floor Waves (tweak more)",
+   "pattern": "wavy-sheet",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "axis": "z",
+    "baseZ": 1,
+    "amp": 0.9,
+    "speed": 0.2,
+    "wavelength": 11,
+    "thickness": 0.7,
+    "levelGain": 5.5,
+    "bassGain": 1.3,
+    "midGain": 0,
+    "trebleGain": 0,
+    "beatGain": 0,
+    "rotateSpeed": 0.19,
+    "rotateAudio": true,
+    "rotateLevelGain": 0,
+    "rotateBeatGain": 2.6,
+    "palette": "cycle",
+    "r": 220,
+    "g": 220,
+    "b": 255
+   },
+   "mods": {}
+  },
+  {
+   "name": "Good Bar EQ",
+   "pattern": "bar-eq",
+   "priority": 4,
+   "dwellSec": 20,
+   "params": {
+    "gain": 1.3,
+    "gamma": 2.85,
+    "attack": 0,
+    "release": 0.02,
+    "beatBoost": 0,
+    "baseHeight": 0,
+    "palette": "cycle",
+    "colorBy": "band",
+    "sat": 0.9
+   },
+   "mods": {}
+  },
+  {
+   "name": "Mayo Egg",
+   "pattern": "spectrum-discs",
+   "priority": 5,
+   "dwellSec": 20,
+   "params": {
+    "axis": "z",
+    "minRadius": 0.2,
+    "gain": 1,
+    "gamma": 2.2,
+    "edge": 0.2,
+    "attack": 0.04,
+    "release": 0.02,
+    "palette": "spectrum",
+    "sat": 0.85,
+    "floor": 0,
+    "beatBoost": 0.2
+   },
+   "mods": {}
+  },
+  {
+   "name": "Mayo Egg Tired",
+   "pattern": "spectrum-discs",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "axis": "y",
+    "minRadius": 0.2,
+    "gain": 1,
+    "gamma": 2.2,
+    "edge": 0.2,
+    "attack": 0.04,
+    "release": 0.02,
+    "palette": "rainbow",
+    "sat": 1,
+    "floor": 0,
+    "beatBoost": 0.2
+   },
+   "mods": {}
+  },
+  {
+   "name": "Rezbow",
+   "pattern": "rez-tunnel",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "axis": "spin",
+    "spinSpeed": 8,
+    "speed": 2.5,
+    "speedFrom": "level",
+    "speedGain": 4,
+    "beatKick": 2.5,
+    "beatSpawn": 1,
+    "shape": "mixed",
+    "shapeSize": 4.25,
+    "ambientRate": 4,
+    "streak": 0.4,
+    "palette": "rainbow",
+    "paletteSolo": false,
+    "soloSpeed": 0.05,
+    "r": 255,
+    "g": 255,
+    "b": 255
+   },
+   "reactive": true,
+   "mods": {}
+  },
+  {
+   "name": "Ripple 1",
+   "pattern": "audio-ripple",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "speed": 9.5,
+    "thickness": 0.8,
+    "fade": 1.9,
+    "autoSpawn": 0,
+    "beatThreshold": 0.9,
+    "levelTrigger": 0.1,
+    "palette": "cycle",
+    "sat": 1
+   },
+   "mods": {}
+  },
+  {
+   "name": "Scan default",
+   "pattern": "scan",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "axis": "z",
+    "speed": 4,
+    "fade": 0.25,
+    "gridOnly": false,
+    "palette": "cycle",
+    "colorBySlice": true,
+    "sat": 0.85,
+    "levelGain": 4
+   },
+   "mods": {}
+  },
+  {
+   "name": "Single Plane Color Cycle",
+   "pattern": "rotating-planes",
+   "priority": 4,
+   "dwellSec": 20,
+   "params": {
+    "speed": 0.3,
+    "sweepSpeed": 0.4,
+    "thickness": 1.1,
+    "planes": 1,
+    "palette": "cycle",
+    "r": 80,
+    "g": 200,
+    "b": 255,
+    "audioGain": 1.5,
+    "levelSpeedGain": 1.5,
+    "beatSpeedGain": 3.6,
+    "levelSweepGain": 1.5,
+    "beatSweepGain": 3.9
+   },
+   "mods": {}
+  },
+  {
+   "name": "Single helix",
+   "pattern": "double-helix",
+   "priority": 2,
+   "dwellSec": 20,
+   "params": {
+    "axis": "z",
+    "radius": 1.75,
+    "turns": 1.2,
+    "speed": 0.8,
+    "speedFrom": "bpm",
+    "speedGain": 1.2,
+    "beatSpin": 1.75,
+    "beatPulse": 1.5,
+    "strands": 1,
+    "rungEvery": 2,
+    "rungBright": 1,
+    "palette": "cycle",
+    "paletteSolo": false,
+    "soloSpeed": 0.05,
+    "r": 80,
+    "g": 200,
+    "b": 255
+   },
+   "reactive": true,
+   "mods": {}
+  },
+  {
+   "name": "Space elevator",
+   "pattern": "rain",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "spawnRate": 1,
+    "fallSpeed": 12.5,
+    "speedJitter": 0.6,
+    "trail": 0.52,
+    "palette": "cycle",
+    "pos": 0.76,
+    "jitter": 0.5,
+    "audioBoost": 0,
+    "beatSpawn": 20,
+    "speedFrom": "bpm",
+    "speedGain": 1
+   },
+   "reactive": true,
+   "mods": {}
+  },
+  {
+   "name": "Wavy base",
+   "pattern": "wavy-sheet",
+   "priority": 4,
+   "dwellSec": 20,
+   "params": {
+    "axis": "z",
+    "baseZ": 4,
+    "amp": 0.7,
+    "speed": 0.6,
+    "wavelength": 8,
+    "thickness": 1.4,
+    "levelGain": 0.5,
+    "bassGain": 0.5,
+    "midGain": 0.5,
+    "trebleGain": 0.6,
+    "beatGain": 1.5,
+    "rotateSpeed": 0.01,
+    "rotateAudio": true,
+    "rotateLevelGain": 1.5,
+    "rotateBeatGain": 2,
+    "palette": "none",
+    "r": 220,
+    "g": 220,
+    "b": 255
+   },
+   "mods": {
+    "thickness": {
+     "mode": "pingpong",
+     "min": 0.4,
+     "max": 1.5,
+     "rate": 0.2,
+     "step": 0.4
+    }
+   }
+  },
+  {
+   "name": "White Comet",
+   "pattern": "comet",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "speed": 2.5,
+    "tailLife": 1.3,
+    "tailGamma": 0.3,
+    "r": 255,
+    "g": 255,
+    "b": 255,
+    "palette": "none",
+    "beatGain": 8,
+    "beatThreshold": 0.25
+   },
+   "mods": {}
+  },
+  {
+   "name": "static cartoons",
+   "pattern": "tv-static",
+   "priority": 3,
+   "dwellSec": 20,
+   "params": {
+    "spawnRate": 0,
+    "beatSpawn": 17,
+    "lifeSec": 0.3,
+    "armLen": 1,
+    "beatArm": 3.5,
+    "aberration": 0.8,
+    "gray": 0,
+    "grayFlicker": 0.55
+   },
+   "reactive": true,
+   "mods": {
+    "beatArm": {
+     "mode": "pingpong",
+     "min": 0,
+     "max": 4,
+     "rate": 1,
+     "step": 0.8
+    }
+   }
+  },
+  {
+   "name": "wormy",
+   "pattern": "wander",
+   "priority": 2,
+   "dwellSec": 20,
+   "params": {
+    "speed": 2,
+    "speedFrom": "bpm",
+    "speedGain": 1.5,
+    "turnChance": 0.25,
+    "beatTurn": true,
+    "tail": 14,
+    "palette": "arctic",
+    "r": 255,
+    "g": 255,
+    "b": 255
+   },
+   "reactive": true,
+   "mods": {
+    "tail": {
+     "mode": "pingpong",
+     "min": 0,
+     "max": 24,
+     "rate": 2,
+     "step": 4
+    }
+   }
+  }
+ ]
 }
