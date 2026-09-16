@@ -37,7 +37,9 @@ truth. It is preserved at git tag `wled-prototype` if you need to consult it.
   `lib/core` to WebAssembly with emscripten (`brew install emscripten`; rebuild
   and commit `web/engine.{js,wasm}` whenever lib/core changes). `web/` is
   static: three.js from a CDN import map, CRT shaders in `crt.js`, mic
-  analysis in `audio.js`. Serve with `python3 -m http.server 5277`.
+  analysis in `audio.js`, playlist from `web/presets.json` (cube export
+  format). Serve with `python3 simulator/serve.py` (no-cache; plain
+  http.server caches module scripts between edits).
 - `docs/` — flashing runbooks, HA integration, stock-WLED config backups,
   screenshots. `docs/on-chip-plan.md` and `docs/controller-plan.md` are
   design notes, the first historical.

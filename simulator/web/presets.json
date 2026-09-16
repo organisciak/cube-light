@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "presets": [
+    {"name": "Sunset sheet", "pattern": "wavy-sheet", "priority": 4, "dwellSec": 24, "reactive": true,
+     "params": {"palette": "sunset", "amp": 1.4, "speed": 0.5}},
+    {"name": "Planes", "pattern": "rotating-planes", "priority": 4, "dwellSec": 20, "reactive": false,
+     "params": {"palette": "cyberpunk"}},
+    {"name": "Rez tunnel", "pattern": "rez-tunnel", "priority": 3, "dwellSec": 20, "reactive": true,
+     "params": {"palette": "rainbow"}},
+    {"name": "Double helix", "pattern": "double-helix", "priority": 3, "dwellSec": 18, "reactive": true,
+     "params": {"palette": "bi_fire"}},
+    {"name": "Arctic rain", "pattern": "rain", "priority": 3, "dwellSec": 18, "reactive": false,
+     "params": {"palette": "arctic"}},
+    {"name": "Spectrum discs", "pattern": "spectrum-discs", "priority": 3, "dwellSec": 16, "reactive": true,
+     "params": {"palette": "spectrum"}},
+    {"name": "Fireworks", "pattern": "fireworks", "priority": 2, "dwellSec": 16, "reactive": false,
+     "params": {"palette": "cycle"}},
+    {"name": "Pac-Man", "pattern": "pacman-3d", "priority": 2, "dwellSec": 30, "reactive": false,
+     "params": {}}
+  ]
+}

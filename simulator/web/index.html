@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>cube-light simulator</title>
+<title>cube-light</title>
+<meta name="description" content="A 10×10×10 music-reactive LED cube, simulated in your browser.">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 {
@@ -16,13 +17,37 @@
 </head>
 <body>
 <canvas id="view"></canvas>
+<button id="panelShow" title="Show controls (Tab)" hidden>☰</button>
+<div id="gameHint" hidden>
+  <b>You're driving the snake.</b>
+  <span><kbd>←</kbd><kbd>→</kbd> left / right &nbsp; <kbd>↑</kbd><kbd>↓</kbd> forward / back &nbsp; <kbd>W</kbd><kbd>S</kbd> up / down</span>
+  <span class="dim">Stop pressing keys for a while and the cube takes over again.</span>
+</div>
 
 <aside id="panel">
   <header>
     <h1>cube-light</h1>
-    <span class="sub">firmware engine, in your browser</span>
-    <button id="panelToggle" title="Hide panel (Tab)">⟨</button>
+    <button id="panelToggle" title="Hide controls (Tab)">⟨</button>
   </header>
+  <p class="about">A 10×10×10 cube of a thousand LEDs, hanging on strings, with an
+    ESP32 and a microphone inside. It ran for a week in a Burning Man speakeasy.
+    This page runs the cube's actual firmware, so what you see is what it does.
+    <a href="https://github.com/organisciak/cube-light" target="_blank" rel="noopener">Build your own on GitHub →</a></p>
+
+  <section id="playlistSec">
+    <h2>Playlist <span class="hint" id="plHint"></span></h2>
+    <div class="row transport">
+      <button id="plPrev" title="Previous preset">⏮</button>
+      <button id="plPlay" title="Play / pause the cycle">⏸</button>
+      <button id="plNext" title="Next preset">⏭</button>
+      <span id="plNow"></span>
+    </div>
+    <div id="plList"></div>
+    <div class="row">
+      <label class="file"><input type="file" id="plImport" accept=".json,application/json">Import presets…</label>
+      <button id="plReset" class="mini">built-in list</button>
+    </div>
+  </section>
 
   <section>
     <label>Pattern <select id="pattern"></select></label>
@@ -46,14 +71,15 @@
     <div id="params"></div>
   </section>
 
-  <section>
-    <h2>Look</h2>
+  <details id="lookSec">
+    <summary><h2>Emulator look <button id="resetLook" class="mini">reset</button></h2></summary>
+    <p class="hint">These change how this page draws the cube: the tube, the glow, the camera. They don't exist on the real cube.</p>
     <div id="look"></div>
     <label class="chk"><input type="checkbox" id="crtOn" checked> CRT treatment</label>
-    <label class="chk"><input type="checkbox" id="autoRotate" checked> Slow orbit</label>
+    <label class="chk"><input type="checkbox" id="autoRotate" checked> Slow orbit (follows the beat)</label>
     <label class="chk"><input type="checkbox" id="showStrings" checked> Show strings</label>
-    <label>Wordmark <input type="text" id="caption" placeholder="CUBE LIGHT" maxlength="24"></label>
-  </section>
+    <label>Wordmark <input type="text" id="caption" placeholder="(preset name)" maxlength="24"></label>
+  </details>
 
   <section>
     <h2>Capture</h2>
@@ -62,16 +88,32 @@
       <button id="rec10">Record 10 s</button>
       <button id="snap">PNG</button>
     </div>
-    <div id="recStatus"></div>
+    <div id="recStatus">Recordings include the microphone when it's on.</div>
   </section>
 
   <footer>
-    <a href="https://github.com/organisciak/cube-light">github.com/organisciak/cube-light</a><br>
-    Games: arrows = X/Y, W/S = Z. Drag to orbit, wheel to zoom.
+    Drag to orbit, wheel to zoom, <kbd>Tab</kbd> hides this panel.<br>
+    <a href="https://github.com/organisciak/cube-light" target="_blank" rel="noopener">github.com/organisciak/cube-light</a>
   </footer>
 </aside>
 
-<div id="loading">loading engine…</div>
+<div id="modal">
+  <div class="card">
+    <h1>cube-light</h1>
+    <p>A thousand LEDs in a 10×10×10 cube, listening to the room. The patterns
+      you're about to see are the cube's own firmware, running here.</p>
+    <p><b>It's better with sound.</b> Let it hear your microphone and the
+      patterns will move to whatever's playing.</p>
+    <div class="row">
+      <button id="modalMic" class="primary">🎤 Use my microphone</button>
+      <button id="modalFake">Synthetic beat</button>
+      <button id="modalOff">Silent</button>
+    </div>
+    <p class="dim">Audio never leaves your browser. You can change this any time under Audio.</p>
+  </div>
+</div>
+
+<div id="loading">loading…</div>
 <script type="module" src="app.js"></script>
 </body>
 </html>

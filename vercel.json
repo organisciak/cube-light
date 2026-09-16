@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "simulator/web",
+  "buildCommand": null,
+  "framework": null,
+  "cleanUrls": true,
+  "headers": [
+    { "source": "/engine.wasm", "headers": [{ "key": "Content-Type", "value": "application/wasm" }] }
+  ]
+}

@@ -154,7 +154,7 @@ analysis and beat detector the cube uses, or a synthetic 120 BPM groove does.
 It records 5 or 10 second WebM clips, because LED cubes photograph terribly.
 
 ```bash
-cd simulator/web && python3 -m http.server 5277   # then open http://127.0.0.1:5277/
+python3 simulator/serve.py   # then open http://127.0.0.1:5277/
 ```
 
 ## Roadmap
