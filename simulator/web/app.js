@@ -11,9 +11,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import createCubeEngine from './engine.js?v=20260916d';
-import { PhosphorPass, CRTShader } from './crt.js?v=20260916d';
-import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916d';
+import createCubeEngine from './engine.js?v=20260916e';
+import { PhosphorPass, CRTShader } from './crt.js?v=20260916e';
+import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916e';
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -515,7 +515,8 @@ function tickCaption(now, isLegend) {
   if (u >= 1) { capMesh.visible = false; return; }
   m.color.setScalar(1 + 5 * Math.sin(Math.PI * Math.min(1, u * 1.6)) * (1 - u));  // flash, then die
   m.opacity = 1 - u * u;
-  capMesh.scale.setScalar(1 + 0.12 * u);
+  // A quick swell, then it collapses in on itself as it dies.
+  capMesh.scale.setScalar(u < 0.3 ? 1 + 0.1 * (u / 0.3) : 1.1 - 0.35 * ((u - 0.3) / 0.7));
 }
 
 // --------------------------------------------------------------- panel ----
