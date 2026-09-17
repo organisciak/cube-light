@@ -117,3 +117,18 @@ The fallback to the AP password exists so an owner on the fallback AP always
 has *some* credential to offer. It is a speed bump, not a secret — everyone on
 the AP typed that password to join. Set a real console password from `/wifi`
 before handing the cube to a crowd.
+
+## Returning a no-USB board to stock WLED
+
+Done 2026-09-16 on the 309. The same armed-OTA path takes a plain WLED app
+image, because the board never left WLED's factory partition table:
+
+1. Download the official release for the chip (`WLED_<ver>_ESP32.bin`, from
+   the WLED GitHub releases) and check it is under the 1.5 MB slot.
+2. Arm the window: `curl -u cube:<pass> -X POST http://<cube>/api/ota?on=1`.
+3. `espota.py -i <ip> -p 3232 --auth=<AP pass> -f WLED_<ver>_ESP32.bin -r`.
+4. Poll `http://<ip>/json/info`. WLED's own `cfg.json` on the flash
+   filesystem survives alongside the cube firmware's preset files, so the
+   board came back with its old Wi-Fi, LED and pin settings intact. If it
+   hadn't, it would appear as the `WLED-AP` hotspot (password `wled1234`)
+   for the config to be restored from `docs/wled-backup-*/cfg.json`.
