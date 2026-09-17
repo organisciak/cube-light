@@ -88,6 +88,7 @@ button:hover { color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.12), ins
 button:active { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0,0,0,.8), 0 0 0 1px rgba(247,179,74,.5); }
 button.mini { padding: 0 6px; font-size: 13px; flex: 0 0 auto; white-space: nowrap; }
 button.rec { background: linear-gradient(180deg, #a4202c, #5a1018); color: #fff; box-shadow: 0 0 12px rgba(255,60,110,.6); animation: blink 1s steps(2) infinite; }
+#recLen { flex: 0 0 72px; }
 @keyframes blink { 50% { box-shadow: 0 0 2px rgba(255,60,110,.2); } }
 button.primary { background: linear-gradient(180deg, #c8602a, #7a3410); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 0 0 1px var(--amber), 0 0 14px rgba(247,179,74,.35); }
 label.file { background: linear-gradient(180deg, #232028, #141218); border: 1px solid #000; border-radius: 3px; padding: 6px 10px; text-align: center; cursor: pointer;
@@ -138,7 +139,7 @@ button.fl { position: fixed; bottom: 16px; z-index: 4; font-size: 20px; padding:
 #modal p { color: #cdbf9f; margin: 8px 0; font-size: 13px; }
 #modal p b { color: var(--amber-hi); }
 #modal .dim { color: var(--dim); font-size: 11px; }
-#modal .row { margin: 16px 0 8px; flex-wrap: wrap; }
+#modal .row { margin: 10px 0; flex-wrap: wrap; }
 #modal .row button { padding: 10px 12px; }
 /* Phones: the panel starts closed, sits over the tube translucently when
    open, and the show-button nudges from the edge until it's been opened. */

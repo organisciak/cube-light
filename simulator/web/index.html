@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Righteous&family=VT323&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260916g">
+<link rel="stylesheet" href="style.css?v=20260917a">
 <script type="importmap">
 {
   "imports": {
@@ -96,8 +96,13 @@
       <option value="16:9">landscape 16:9</option>
     </select></label>
     <div class="row">
-      <button id="rec5">Record 5 s</button>
-      <button id="rec10">Record 10 s</button>
+      <select id="recLen">
+        <option value="5">5 s</option>
+        <option value="10" selected>10 s</option>
+        <option value="30">30 s</option>
+        <option value="60">60 s</option>
+      </select>
+      <button id="rec">● Record</button>
       <button id="snap">PNG</button>
     </div>
     <div id="recStatus">Recordings include the microphone when it's on.</div>
@@ -112,20 +117,22 @@
 <div id="modal">
   <div class="card">
     <h1>cube-light</h1>
-    <p>A thousand LEDs in a 10×10×10 cube, listening to the room. The patterns
-      you're about to see are the cube's own firmware, running here.</p>
-    <p><b>It's better with sound.</b> Let it hear your microphone and the
-      patterns will move to whatever's playing.</p>
+    <p>Demo patterns for a LightCube build.</p>
+    <p><b>It's better with sound.</b> Let it hear your microphone, or share a
+      browser tab that's playing music (Chrome and Edge).</p>
     <div class="row">
       <button id="modalMic" class="primary">🎤 Use my microphone</button>
+      <button id="modalTab">🔊 Share a tab with sound</button>
+    </div>
+    <div class="row">
       <button id="modalFake">Synthetic beat</button>
       <button id="modalOff">Silent</button>
     </div>
-    <p class="dim">Audio never leaves your browser. You can change this any time under Audio — including a clean feed straight from a tab that's playing music.</p>
+    <p class="dim">Audio never leaves your browser. Change it any time under Audio.</p>
   </div>
 </div>
 
 <div id="loading">loading…</div>
-<script type="module" src="app.js?v=20260916g"></script>
+<script type="module" src="app.js?v=20260917a"></script>
 </body>
 </html>

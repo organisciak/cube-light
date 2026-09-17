@@ -36,8 +36,8 @@ for GitHub Pages once Pages is enabled with "GitHub Actions" as the source.
   it can also be switched off, or set to burn out 2 s after each preset
   change (a bloom flash while it fades and swells). Game legends always show.
 - **Onboarding**: a first-visit modal offers the microphone (the click is the
-  user gesture WebAudio needs), a synthetic beat, or silence; the choice is
-  remembered.
+  user gesture WebAudio needs), sharing a tab with sound (Chrome/Edge), a
+  synthetic beat, or silence; the choice is remembered.
 
 - **Pattern** and its parameters: the same knobs as the cube's console.
   `#pattern-id` in the URL selects one on load.
@@ -62,7 +62,7 @@ for GitHub Pages once Pages is enabled with "GitHub Actions" as the source.
   through the same glow so the card reads like a broadcast ident.
 - **Capture** (inside Emulator): a Frame selector letterboxes the canvas to
   portrait 9:16, square or 16:9 so recordings come out reel-shaped; Record
-  5 s / 10 s saves a WebM from the canvas, with the microphone or tab audio
+  (5, 10, 30 or 60 s, or stop early) saves a WebM from the canvas, with the microphone or tab audio
   mixed in when it's on; PNG saves a still.
 - **Games**: arrow keys (X/Y) and W/S (Z). The wordmark under the cube
   becomes the legend; while you're driving, the orbit stops and the unlit

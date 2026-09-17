@@ -11,9 +11,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import createCubeEngine from './engine.js?v=20260916g';
-import { PhosphorPass, CRTShader } from './crt.js?v=20260916g';
-import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260916g';
+import createCubeEngine from './engine.js?v=20260917a';
+import { PhosphorPass, CRTShader } from './crt.js?v=20260917a';
+import { MicAnalyzer, fakeAudio, BANDS } from './audio.js?v=20260917a';
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -596,16 +596,20 @@ function record(seconds) {
     a.click();
     $('recStatus').textContent = `saved ${a.download} (${(blob.size / 1e6).toFixed(1)} MB)`;
     recorder = null;
-    for (const b of [$('rec5'), $('rec10')]) b.classList.remove('rec');
+    $('rec').classList.remove('rec'); $('rec').textContent = '● Record';
   };
   recorder.start();
-  for (const b of [$('rec5'), $('rec10')]) b.classList.add('rec');
+  $('rec').classList.add('rec');
   let left = seconds;
-  const tick = () => { $('recStatus').textContent = `recording… ${left}s${LIVE.has(state.audio) ? ' (with audio)' : ''}`; if (left-- > 0) setTimeout(tick, 1000); else recorder.stop(); };
+  const tick = () => {
+    if (!recorder) return;
+    $('rec').textContent = `■ ${left}s`;
+    $('recStatus').textContent = `recording… ${left}s${LIVE.has(state.audio) ? ' (with audio)' : ''} — click to stop early`;
+    if (left-- > 0) setTimeout(tick, 1000); else recorder.stop();
+  };
   tick();
 }
-$('rec5').onclick = () => record(5);
-$('rec10').onclick = () => record(10);
+$('rec').onclick = () => { if (recorder) recorder.stop(); else record(+$('recLen').value); };
 $('snap').onclick = () => {
   const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = `cube-light-${state.pattern}.png`; a.click();
 };
@@ -704,6 +708,8 @@ requestAnimationFrame(frame);
 const remembered = store.get('cube-audio', null);
 if (remembered && remembered !== 'mic') { $('modal').hidden = true; setAudio(remembered); }
 $('modalMic').onclick = async () => { $('modal').hidden = true; await setAudio('mic'); };
+$('modalTab').onclick = async () => { $('modal').hidden = true; await setAudio('tab'); };
+if (!navigator.mediaDevices?.getDisplayMedia) $('modalTab').hidden = true;  // Safari/Firefox
 $('modalFake').onclick = () => { $('modal').hidden = true; setAudio('fake'); };
 $('modalOff').onclick = () => { $('modal').hidden = true; setAudio('off'); };
 if (!$('modal').hidden) $('micTag').hidden = true;  // the modal is already asking
