@@ -3,6 +3,8 @@
 **A 10×10×10 music reactive LED cube.** One thousand addressable pixels, an
 ESP32 microcontroller that lives inside the cube, a phone-friendly console. And 3D snake!
 
+Best way to understand it - try it in browser: <https://cube.porg.dev>
+
 | | |
 |---|---|
 | ![The cube hanging in the speakeasy](docs/media/speakeasy.jpg) | ![The cube reacting to music in the speakeasy](docs/media/speakeasy.gif) |
