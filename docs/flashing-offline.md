@@ -132,3 +132,25 @@ image, because the board never left WLED's factory partition table:
    board came back with its old Wi-Fi, LED and pin settings intact. If it
    hadn't, it would appear as the `WLED-AP` hotspot (password `wled1234`)
    for the config to be restored from `docs/wled-backup-*/cfg.json`.
+
+## First flash from stock WLED (no-USB boards)
+
+Done 2026-11-07 on the home cube (env `cube-home`). WLED 0.15.4 checks that
+an uploaded image is a WLED build and quietly refuses anything else, so the
+upload must send `skipValidation=1` (the "Ignore firmware validation" box on
+its Update page) *before* the file field:
+
+```bash
+cd firmware
+export CUBE_WIFI_SSID=... CUBE_WIFI_PASS=...   # baked in for first boot
+~/.platformio/penv/bin/pio run -e cube-home -t clean -s
+~/.platformio/penv/bin/pio run -e cube-home
+curl -F skipValidation=1 -F update=@.pio/build/cube-home/firmware.bin \
+    http://<wled-ip>/update      # expect "Update successful! Rebooting now..."
+```
+
+Then poll `http://<ip>/api/status` until `"version"` shows the cube firmware.
+After that, `cube-home` keeps ArduinoOTA open (`CUBE_OTA_OPEN=1`): plain
+`espota.py -i cube.local -p 3232 --auth=<AP pass> -f <bin> -r`, no arming.
+Its status still shows an `otaRemainingSec` countdown; ignore it, the window
+never closes on that build.

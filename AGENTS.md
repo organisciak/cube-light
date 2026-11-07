@@ -23,7 +23,7 @@ truth. It is preserved at git tag `wled-prototype` if you need to consult it.
   5 A barrel supply. Env `cube-home`: OTA stays open (`CUBE_OTA_OPEN=1`, no
   arming; password is the AP password), mDNS `cube.local`. Its stock WLED
   config is in `docs/wled-backup-home/`. First flash rides WLED's own
-  `/update`; Wi-Fi is baked from `CUBE_WIFI_SSID`/`CUBE_WIFI_PASS` in the
+  `/update` with `skipValidation=1` (0.15.4 refuses non-WLED images otherwise); Wi-Fi is baked from `CUBE_WIFI_SSID`/`CUBE_WIFI_PASS` in the
   shell env at build time.
 - Any classic ESP32 + an I2S/PDM mic works; pins are `-D` build flags in
   `firmware/platformio.ini`.
