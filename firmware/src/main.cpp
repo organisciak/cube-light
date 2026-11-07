@@ -166,10 +166,10 @@ void loadSettings() {
   settings.layout.flipZ = prefs.getBool("flipz", false);
   settings.layout.ledOffset = prefs.getInt("ledoff", 0);
   settings.upAxis = prefs.getString("up", "z+");
-  // Default is a single unbroken 1000-LED chain on output 1; set pin2/split
-  // from the console once the chain is physically cut in half.
+  // First-boot pins come from the env's build flags (CUBE_LED_PIN2=-1 means
+  // one unbroken 1000-LED chain); after that the console's values win.
   settings.ledPin = prefs.getInt("ledpin", CUBE_LED_PIN);
-  settings.ledPin2 = prefs.getInt("ledpin2", -1);
+  settings.ledPin2 = prefs.getInt("ledpin2", CUBE_LED_PIN2);
   settings.ledSplit = prefs.getInt("ledsplit", CUBE_LED_SPLIT);
   settings.ledSkip1 = prefs.getInt("skip1", 0);
   settings.ledTrim1 = prefs.getInt("trim1", 0);
@@ -1241,13 +1241,19 @@ void netTick() {
 // the AP/OTA password is still the factory default. USB flashing can't be
 // blocked in software (the ROM bootloader always wins) — that's what a
 // locked enclosure is for.
+//
+// CUBE_OTA_OPEN=1 skips all of that for a cube that lives at home: OTA starts
+// with the network and never lapses (still password-protected).
+#ifndef CUBE_OTA_OPEN
+#define CUBE_OTA_OPEN 0
+#endif
 bool otaArmed = false;
 uint32_t otaDisarmAtMs = 0;
 constexpr uint32_t kOtaWindowMs = 15UL * 60UL * 1000UL;
 
 void armOta() {
   if (!otaArmed) {
-    ArduinoOTA.setHostname("cube");
+    ArduinoOTA.setHostname(CUBE_MDNS_NAME);
     ArduinoOTA.setPassword(settings.apPass.c_str());
     ArduinoOTA.begin();
     otaArmed = true;
@@ -1428,7 +1434,9 @@ void startNetServices() {
   audioCaptureStart();
   audioCaptureReconfigure(settings.micLeft, settings.micSquelch);
   startHaMqtt();
-  Serial.println("[net] services up (mdns/udp/http/mic; ota disarmed)");
+  if (CUBE_OTA_OPEN) armOta();
+  Serial.println(CUBE_OTA_OPEN ? "[net] services up (mdns/udp/http/mic; ota open)"
+                               : "[net] services up (mdns/udp/http/mic; ota disarmed)");
 }
 
 void setupWebServer() {
@@ -2477,7 +2485,7 @@ void loop() {
   }
   if (otaArmed) {
     ArduinoOTA.handle();
-    if ((int32_t)(millis() - otaDisarmAtMs) > 0) disarmOta();  // window lapsed
+    if (!CUBE_OTA_OPEN && (int32_t)(millis() - otaDisarmAtMs) > 0) disarmOta();  // window lapsed
   }
   server.handleClient();
   if (WiFi.status() == WL_CONNECTED) haMqtt.loop();

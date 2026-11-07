@@ -18,6 +18,13 @@ truth. It is preserved at git tag `wled-prototype` if you need to consult it.
   `gledopto309` env stays for mic-less boards; `gledopto310` (I2S mic on
   SD 26 / WS 5 / SCK 21) is compile-tested only. Ordering note: the 310WL
   is the mic variant, the 309WL is not.
+- Home cube (rebuilt Nov 2026): a third no-USB Gledopto (MAC …5b43b8,
+  was WLED at 192.168.0.176) with a PDM mic on 32/15, outputs IO16 + IO2,
+  5 A barrel supply. Env `cube-home`: OTA stays open (`CUBE_OTA_OPEN=1`, no
+  arming; password is the AP password), mDNS `cube.local`. Its stock WLED
+  config is in `docs/wled-backup-home/`. First flash rides WLED's own
+  `/update`; Wi-Fi is baked from `CUBE_WIFI_SSID`/`CUBE_WIFI_PASS` in the
+  shell env at build time.
 - Any classic ESP32 + an I2S/PDM mic works; pins are `-D` build flags in
   `firmware/platformio.ini`.
 - LEDs: two chains of 500 on separate outputs (`CUBE_LED_SPLIT`).
